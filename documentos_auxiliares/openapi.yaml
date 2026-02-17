@@ -1,0 +1,5807 @@
+openapi: 3.1.0
+
+info:
+  title: Veridia Tools API
+  description: |
+    API REST da plataforma Veridia Tools - SaaS médico para profissionais de saúde.
+
+    ## Autenticação
+    Todas as rotas (exceto `/auth/login`, `/auth/register`, `/auth/google`, `/auth/forgot-password`, `/auth/reset-password`)
+    requerem token JWT no header:
+    ```
+    Authorization: Bearer <token>
+    ```
+
+    ## Paginação
+    Listagens retornam dados paginados com estrutura:
+    ```json
+    {
+      "data": [...],
+      "meta": { "total": 100, "page": 1, "perPage": 20, "lastPage": 5 }
+    }
+    ```
+
+    ## Erros
+    Erros seguem o formato RFC 7807:
+    ```json
+    {
+      "type": "https://api.veridia-tools.com/errors/validation",
+      "title": "Validation Error",
+      "status": 422,
+      "detail": "Campo email é obrigatório",
+      "errors": [{ "field": "email", "message": "Campo obrigatório" }]
+    }
+    ```
+
+    ## Requisitos Funcionais
+    Cada endpoint documenta os RFs atendidos (RF-001 a RF-062).
+  version: 1.0.0
+  contact:
+    name: Veridia Tools Team
+    email: dev@veridia-tools.com
+
+servers:
+  - url: http://localhost:3001/api/v1
+    description: Desenvolvimento local
+  - url: https://staging-api.veridia-tools.com/v1
+    description: Staging
+  - url: https://api.veridia-tools.com/v1
+    description: Produção
+
+tags:
+  - name: Auth
+    description: Autenticação e autorização (RF-001 a RF-005)
+  - name: Users
+    description: Gerenciamento de usuários e perfis
+  - name: Subscriptions
+    description: Planos e assinaturas (RF-010 a RF-013)
+  - name: Workspaces
+    description: Espaços de trabalho (RF-020 a RF-024)
+  - name: Assistants
+    description: Assistentes de IA (RF-025 a RF-028)
+  - name: Tools
+    description: Ferramentas médicas (RF-030 a RF-035)
+  - name: Transcriptions
+    description: Transcrição de áudio (RF-040 a RF-044)
+  - name: Results
+    description: Histórico e resultados (RF-050 a RF-052)
+  - name: LGPD
+    description: Privacidade e compliance (RF-060 a RF-062)
+  - name: Admin
+    description: Operações administrativas
+  - name: OutputTemplates
+    description: Templates de saída para assistentes (RF-080 a RF-083)
+  - name: Groups
+    description: Grupos de ferramentas (RF-084 a RF-085)
+  - name: ContextPresets
+    description: Presets de contexto situacional (RF-086)
+  - name: Specialties
+    description: Especialidades médicas normalizadas
+  - name: UserAssistantCustomization
+    description: Personalização de assistentes por usuários Premium (RN-090 a RN-094)
+
+# ============================================
+# SECURITY SCHEMES
+# ============================================
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Token JWT obtido via POST /auth/login ou /auth/google
+
+        Exemplo:
+        ```
+        Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        ```
+
+  # ============================================
+  # SCHEMAS REUTILIZÁVEIS
+  # ============================================
+
+  schemas:
+    # === PAGINATION ===
+    PaginationMeta:
+      type: object
+      properties:
+        total:
+          type: integer
+          description: Total de registros
+          example: 100
+        page:
+          type: integer
+          description: Página atual
+          example: 1
+        perPage:
+          type: integer
+          description: Itens por página
+          example: 20
+        lastPage:
+          type: integer
+          description: Última página
+          example: 5
+      required:
+        - total
+        - page
+        - perPage
+        - lastPage
+
+    # === ERRORS ===
+    Error:
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri
+          description: URI identificando o tipo de erro
+          example: https://api.veridia-tools.com/errors/validation
+        title:
+          type: string
+          description: Título legível do erro
+          example: Validation Error
+        status:
+          type: integer
+          description: Código HTTP
+          example: 422
+        detail:
+          type: string
+          description: Descrição detalhada
+          example: Campo email é obrigatório
+        instance:
+          type: string
+          format: uri
+          description: URI da requisição que gerou o erro
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldError'
+      required:
+        - type
+        - title
+        - status
+
+    FieldError:
+      type: object
+      properties:
+        field:
+          type: string
+          example: email
+        message:
+          type: string
+          example: Campo obrigatório
+        code:
+          type: string
+          example: required
+      required:
+        - field
+        - message
+
+    # === ENUMS ===
+    UserType:
+      type: string
+      enum:
+        - customer
+        - admin
+        - support
+        - master
+      example: customer
+
+    SubscriptionStatus:
+      type: string
+      enum:
+        - free
+        - premium
+        - canceled
+      example: free
+
+    ToolCategory:
+      type: string
+      enum:
+        - auxiliary
+        - intelligent
+      example: auxiliary
+
+    # === CONTEXTO SITUACIONAL ENUMS (RN-073) ===
+    EnvironmentType:
+      type: string
+      enum:
+        - pronto-socorro
+        - internacao
+        - ambulatorio-sus
+        - consultorio-particular
+        - domiciliar
+      description: Tipo de ambiente do workspace (5 tipos - telemedicina é flag separada)
+      example: ambulatorio-sus
+
+    NoiseLevel:
+      type: string
+      enum:
+        - baixo
+        - moderado
+        - alto
+        - muito-alto
+      description: Nível de ruído do ambiente
+      example: moderado
+
+    UrgencyLevel:
+      type: string
+      enum:
+        - rotina
+        - urgente
+      description: Nível de urgência (emergência fora do escopo)
+      example: rotina
+
+    PatientAgeSubGroup:
+      type: string
+      enum:
+        - neonatal
+        - lactente
+        - pre-escolar
+        - escolar
+        - adolescente
+      description: Faixas etárias pediátricas detalhadas
+      example: lactente
+
+    PatientComplexity:
+      type: string
+      enum:
+        - baixa
+        - media
+        - alta
+        - critica
+      description: Complexidade do paciente
+      example: media
+
+    LanguageStyle:
+      type: string
+      enum:
+        - tecnico
+        - coloquial
+        - misto
+      description: Estilo de linguagem esperado na transcrição
+      example: tecnico
+
+    ToolRole:
+      type: string
+      enum:
+        - input
+        - output
+      example: input
+
+    WorkspaceVisibility:
+      type: string
+      enum:
+        - public
+        - private
+      example: public
+
+    AssistantModel:
+      type: string
+      description: Modelos de IA disponíveis para assistentes. Deve estar sincronizado com o enum ai_model do PostgreSQL e AiModel do backend .NET.
+      enum:
+        - gpt-4o
+        - gpt-4o-mini
+        - gpt-4-turbo
+        - claude-3-5-sonnet
+        - claude-3-opus
+        - claude-sonnet-4
+        - gemini-2.5-flash-lite
+      example: claude-sonnet-4
+
+    ResultStatus:
+      type: string
+      enum:
+        - pending
+        - processing
+        - completed
+        - failed
+        - partial
+      example: completed
+
+    # === USER ===
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        email:
+          type: string
+          format: email
+          example: medico@clinica.com.br
+        firstName:
+          type: string
+          example: João
+        lastName:
+          type: string
+          example: Silva
+        userType:
+          $ref: '#/components/schemas/UserType'
+        emailVerified:
+          type: boolean
+          example: true
+        lastLogin:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - email
+        - firstName
+        - lastName
+        - userType
+        - emailVerified
+        - createdAt
+        - updatedAt
+
+    CustomerProfile:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        crm:
+          type: string
+          example: CRM/SP 123456
+          nullable: true
+        specialtyId:
+          type: string
+          format: uuid
+          nullable: true
+          description: FK para medical_specialties (normalizado)
+        specialty:
+          type: string
+          example: Cardiologia
+          nullable: true
+          deprecated: true
+          description: Deprecated - usar specialtyId e specialtyName
+        specialtyName:
+          type: string
+          nullable: true
+          description: Nome da especialidade resolvido do FK
+          example: Cardiologia
+        clinicName:
+          type: string
+          example: Clínica Coração Saudável
+          nullable: true
+        subscriptionStatus:
+          $ref: '#/components/schemas/SubscriptionStatus'
+        stripeCustomerId:
+          type: string
+          nullable: true
+        aiToolsUsedToday:
+          type: integer
+          example: 5
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - userId
+        - subscriptionStatus
+        - aiToolsUsedToday
+        - createdAt
+        - updatedAt
+
+    UserWithProfile:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          properties:
+            profile:
+              $ref: '#/components/schemas/CustomerProfile'
+
+    UserStats:
+      type: object
+      description: Estatísticas agregadas do usuário
+      properties:
+        consultationsToday:
+          type: integer
+          description: Número de consultas realizadas hoje
+          example: 8
+        pendingConsultations:
+          type: integer
+          description: Número de consultas pendentes/em processamento
+          example: 2
+        consultationsThisMonth:
+          type: integer
+          description: Número de consultas realizadas no mês atual
+          example: 156
+        totalWorkspaces:
+          type: integer
+          description: Número total de workspaces disponíveis para o usuário
+          example: 4
+        totalToolsUsed:
+          type: integer
+          description: Número total de ferramentas já utilizadas
+          example: 0
+      required:
+        - consultationsToday
+        - pendingConsultations
+        - consultationsThisMonth
+        - totalWorkspaces
+        - totalToolsUsed
+
+    UserPreferences:
+      type: object
+      description: Preferências configuráveis do usuário
+      properties:
+        filterAssistantsBySpecialty:
+          type: boolean
+          default: false
+          description: Se true, filtra assistentes pela especialidade do usuário
+          example: true
+      required:
+        - filterAssistantsBySpecialty
+
+    UpdatePreferencesRequest:
+      type: object
+      description: Request para atualizar preferências do usuário
+      properties:
+        filterAssistantsBySpecialty:
+          type: boolean
+          description: Se true, filtra assistentes pela especialidade do usuário
+
+    # === AUTH ===
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          example: medico@clinica.com.br
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: SenhaSegura123!
+      required:
+        - email
+        - password
+
+    GoogleLoginRequest:
+      type: object
+      properties:
+        idToken:
+          type: string
+          description: Token ID do Google OAuth
+      required:
+        - idToken
+
+    RegisterRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          example: novo.medico@clinica.com.br
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: SenhaSegura123!
+        firstName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: Maria
+        lastName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: Santos
+      required:
+        - email
+        - password
+        - firstName
+        - lastName
+
+    LoginResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: JWT token de acesso
+        refreshToken:
+          type: string
+          description: Token para renovar sessão
+        expiresIn:
+          type: integer
+          description: Segundos até expirar
+          example: 3600
+        user:
+          $ref: '#/components/schemas/UserWithProfile'
+      required:
+        - accessToken
+        - expiresIn
+        - user
+
+    ForgotPasswordRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+      required:
+        - email
+
+    ResetPasswordRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Token recebido por email
+        password:
+          type: string
+          format: password
+          minLength: 8
+      required:
+        - token
+        - password
+
+    RefreshTokenRequest:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+      required:
+        - refreshToken
+
+    # === SUBSCRIPTION ===
+    SubscriptionPlanResponse:
+      type: object
+      description: Dados simplificados de plano para exibição pública (pricing page)
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Premium
+        price:
+          type: number
+          format: float
+          example: 99.90
+        billingInterval:
+          type: string
+          enum:
+            - month
+            - year
+          example: month
+        features:
+          type: array
+          items:
+            type: string
+          example:
+            - Ferramentas ilimitadas
+            - Assistentes de IA
+            - Suporte prioritário
+        aiDailyLimit:
+          type: integer
+          example: 100
+        aiMonthlyLimit:
+          type: integer
+          example: 3000
+      required:
+        - id
+        - name
+        - price
+        - billingInterval
+        - features
+
+    # === PLAN MANAGEMENT (Admin) ===
+    PlanResponse:
+      type: object
+      description: Resposta completa de plano para gerenciamento administrativo
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          description: Chave única do plano (free, pro, premium, canceled)
+          example: pro
+        name:
+          type: string
+          example: Profissional
+        description:
+          type: string
+          nullable: true
+          example: Plano ideal para profissionais de saúde autônomos
+        price:
+          type: number
+          format: float
+          description: Preço em reais (ex 99.90)
+          example: 99.90
+        billingInterval:
+          type: string
+          enum:
+            - month
+            - year
+          example: month
+        stripePriceId:
+          type: string
+          nullable: true
+        stripeProductId:
+          type: string
+          nullable: true
+        aiDailyLimit:
+          type: integer
+          description: Limite diário de execuções de IA
+          example: 50
+        aiMonthlyLimit:
+          type: integer
+          description: Limite mensal de execuções de IA
+          example: 1000
+        maxTokensPerRequest:
+          type: integer
+          description: Máximo de tokens por requisição
+          example: 4000
+        allowedModels:
+          type: array
+          items:
+            type: string
+          description: Modelos de IA permitidos
+          example:
+            - claude-sonnet-4
+            - claude-opus-4
+        transcriptionMonthlyMinutes:
+          type: integer
+          description: Minutos de transcrição por mês
+          example: 300
+        trialDurationDays:
+          type: integer
+          nullable: true
+          description: Duração do trial em dias
+        planDurationDays:
+          type: integer
+          nullable: true
+          description: Duração do plano em dias (null = ilimitado)
+        features:
+          type: array
+          items:
+            type: string
+          description: Lista de features para exibição
+          example:
+            - 50 execuções de IA por dia
+            - 1000 execuções de IA por mês
+            - 5 horas de transcrição por mês
+        isActive:
+          type: boolean
+          description: Se o plano está disponível para novas assinaturas
+        displayOrder:
+          type: integer
+          description: Ordem de exibição
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - key
+        - name
+        - price
+        - billingInterval
+        - aiDailyLimit
+        - aiMonthlyLimit
+        - maxTokensPerRequest
+        - allowedModels
+        - transcriptionMonthlyMinutes
+        - isActive
+        - displayOrder
+        - createdAt
+        - updatedAt
+
+    CreatePlanRequest:
+      type: object
+      description: Requisição para criar novo plano
+      properties:
+        key:
+          type: string
+          description: Chave única do plano
+          example: enterprise
+        name:
+          type: string
+          example: Enterprise
+        description:
+          type: string
+          nullable: true
+        price:
+          type: number
+          format: float
+          example: 299.90
+        billingInterval:
+          type: string
+          enum:
+            - month
+            - year
+          default: month
+        stripePriceId:
+          type: string
+          nullable: true
+        stripeProductId:
+          type: string
+          nullable: true
+        aiDailyLimit:
+          type: integer
+          example: 500
+        aiMonthlyLimit:
+          type: integer
+          example: 10000
+        maxTokensPerRequest:
+          type: integer
+          example: 8000
+        allowedModels:
+          type: array
+          items:
+            type: string
+        transcriptionMonthlyMinutes:
+          type: integer
+          example: 1200
+        trialDurationDays:
+          type: integer
+          nullable: true
+        planDurationDays:
+          type: integer
+          nullable: true
+        features:
+          type: array
+          items:
+            type: string
+        displayOrder:
+          type: integer
+          default: 0
+      required:
+        - key
+        - name
+        - aiDailyLimit
+        - aiMonthlyLimit
+        - maxTokensPerRequest
+        - transcriptionMonthlyMinutes
+
+    UpdatePlanRequest:
+      type: object
+      description: Requisição para atualizar plano existente
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        price:
+          type: number
+          format: float
+        billingInterval:
+          type: string
+          enum:
+            - month
+            - year
+        stripePriceId:
+          type: string
+          nullable: true
+        stripeProductId:
+          type: string
+          nullable: true
+        aiDailyLimit:
+          type: integer
+        aiMonthlyLimit:
+          type: integer
+        maxTokensPerRequest:
+          type: integer
+        allowedModels:
+          type: array
+          items:
+            type: string
+        transcriptionMonthlyMinutes:
+          type: integer
+        trialDurationDays:
+          type: integer
+          nullable: true
+        planDurationDays:
+          type: integer
+          nullable: true
+        features:
+          type: array
+          items:
+            type: string
+        isActive:
+          type: boolean
+        displayOrder:
+          type: integer
+
+    UserUsageSummaryResponse:
+      type: object
+      description: Resumo de uso de um usuário
+      properties:
+        userId:
+          type: string
+          format: uuid
+        planKey:
+          type: string
+          example: pro
+        planName:
+          type: string
+          example: Profissional
+        aiUsage:
+          type: object
+          properties:
+            dailyUsed:
+              type: integer
+              example: 15
+            dailyLimit:
+              type: integer
+              example: 50
+            dailyPercentage:
+              type: number
+              format: float
+              example: 30.0
+            monthlyUsed:
+              type: integer
+              example: 250
+            monthlyLimit:
+              type: integer
+              example: 1000
+            monthlyPercentage:
+              type: number
+              format: float
+              example: 25.0
+        transcriptionUsage:
+          type: object
+          properties:
+            minutesUsed:
+              type: integer
+              example: 45
+            minutesLimit:
+              type: integer
+              example: 300
+            percentage:
+              type: number
+              format: float
+              example: 15.0
+        periodStart:
+          type: string
+          format: date-time
+        periodEnd:
+          type: string
+          format: date-time
+      required:
+        - userId
+        - planKey
+        - planName
+        - aiUsage
+        - transcriptionUsage
+
+    Subscription:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/SubscriptionStatus'
+        plan:
+          $ref: '#/components/schemas/SubscriptionPlanResponse'
+        currentPeriodStart:
+          type: string
+          format: date-time
+        currentPeriodEnd:
+          type: string
+          format: date-time
+        cancelAtPeriodEnd:
+          type: boolean
+        stripeSubscriptionId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - status
+        - createdAt
+
+    CheckoutSessionRequest:
+      type: object
+      properties:
+        planId:
+          type: string
+          format: uuid
+        successUrl:
+          type: string
+          format: uri
+        cancelUrl:
+          type: string
+          format: uri
+      required:
+        - planId
+
+    CheckoutSessionResponse:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        url:
+          type: string
+          format: uri
+      required:
+        - sessionId
+        - url
+
+    # === WORKSPACE ===
+    Workspace:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Cardiologia Geral
+        description:
+          type: string
+          nullable: true
+        visibility:
+          $ref: '#/components/schemas/WorkspaceVisibility'
+        displayOrder:
+          type: integer
+        createdBy:
+          type: string
+          format: uuid
+        situationalContext:
+          allOf:
+            - $ref: '#/components/schemas/SituationalContext'
+          nullable: true
+          description: Contexto situacional do workspace (RN-073, RF-086)
+        contextPresetId:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID do preset de contexto usado
+        maxConsultationMinutes:
+          type: integer
+          nullable: true
+          description: Tempo máximo de consulta (derivado do contexto)
+        environmentType:
+          allOf:
+            - $ref: '#/components/schemas/EnvironmentType'
+          nullable: true
+          description: Tipo de ambiente (derivado do contexto)
+        assistantCount:
+          type: integer
+        toolCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - visibility
+        - displayOrder
+        - createdBy
+        - assistantCount
+        - toolCount
+        - createdAt
+        - updatedAt
+
+    WorkspaceCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 500
+        visibility:
+          $ref: '#/components/schemas/WorkspaceVisibility'
+        displayOrder:
+          type: integer
+        situationalContext:
+          allOf:
+            - $ref: '#/components/schemas/SituationalContext'
+          nullable: true
+          description: Contexto situacional do workspace (RF-086)
+        contextPresetId:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID do preset de contexto a usar
+      required:
+        - name
+
+    WorkspaceUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 500
+        visibility:
+          $ref: '#/components/schemas/WorkspaceVisibility'
+        displayOrder:
+          type: integer
+        situationalContext:
+          allOf:
+            - $ref: '#/components/schemas/SituationalContext'
+          nullable: true
+          description: Contexto situacional do workspace (RF-086)
+        contextPresetId:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID do preset de contexto a usar
+
+    WorkspaceList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Workspace'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+      required:
+        - data
+        - meta
+
+    WorkspacePrivateRequest:
+      type: object
+      properties:
+        justification:
+          type: string
+          minLength: 10
+          maxLength: 500
+          description: Justificativa para workspace privado
+      required:
+        - justification
+
+    # === CONTEXTO SITUACIONAL (RN-073, RF-086) ===
+    SituationalContext:
+      type: object
+      description: |
+        Contexto situacional do workspace que influencia a análise de IA.
+        Telemedicina é uma funcionalidade (flag), NÃO um tipo de ambiente separado.
+        Fora do escopo: sala de emergência, sala de reanimação, fichas vermelhas.
+      properties:
+        environment:
+          type: object
+          description: Informações sobre o ambiente físico
+          properties:
+            type:
+              $ref: '#/components/schemas/EnvironmentType'
+            noiseLevel:
+              $ref: '#/components/schemas/NoiseLevel'
+            multipleVoices:
+              type: boolean
+              description: Se há múltiplas vozes no ambiente (equipe, familiares)
+              example: true
+            equipmentNoise:
+              type: boolean
+              description: Se há ruído de equipamentos médicos (monitores, bombas)
+              example: false
+        timing:
+          type: object
+          description: Informações de tempo da consulta
+          properties:
+            maxConsultationMinutes:
+              type: integer
+              minimum: 1
+              maximum: 480
+              description: Tempo máximo de consulta em minutos
+              example: 30
+            urgencyLevel:
+              $ref: '#/components/schemas/UrgencyLevel'
+        patientProfile:
+          type: object
+          description: Perfil do paciente para contexto
+          properties:
+            ageGroup:
+              type: string
+              enum:
+                - pediatrico
+              description: Foco inicial em pediatria
+              example: pediatrico
+            ageSubGroups:
+              type: array
+              description: Faixas etárias pediátricas detalhadas
+              items:
+                $ref: '#/components/schemas/PatientAgeSubGroup'
+              example: [neonatal, lactente]
+            complexity:
+              $ref: '#/components/schemas/PatientComplexity'
+        transcriptionHints:
+          type: object
+          description: Dicas para processamento da transcrição
+          properties:
+            expectedTerminology:
+              type: array
+              description: Terminologia médica esperada
+              items:
+                type: string
+              example: [percentil, vacina, marco, desenvolvimento]
+            languageStyle:
+              $ref: '#/components/schemas/LanguageStyle'
+            voiceIdentification:
+              type: array
+              description: Identificação de vozes no ambiente
+              items:
+                type: object
+                properties:
+                  role:
+                    type: string
+                    enum:
+                      - medico
+                      - responsavel
+                      - crianca
+                      - cuidador
+                      - equipe
+        telemedicine:
+          type: object
+          description: Configuração de telemedicina (funcionalidade, não workspace separado)
+          properties:
+            enabled:
+              type: boolean
+              description: Se telemedicina está habilitada
+              example: false
+            videoEnabled:
+              type: boolean
+              description: Se vídeo está habilitado
+              example: false
+            audioEnabled:
+              type: boolean
+              description: Se áudio está habilitado
+              example: true
+        customContextPrompt:
+          type: string
+          nullable: true
+          description: Prompt de contexto customizado (override do padrão)
+          maxLength: 2000
+
+    WorkspaceContextPreset:
+      type: object
+      description: Preset de contexto situacional pré-configurado
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          description: Chave única do preset
+          example: uti-pediatrica
+        name:
+          type: string
+          description: Nome do preset
+          example: UTI Pediátrica
+        description:
+          type: string
+          nullable: true
+        environmentType:
+          $ref: '#/components/schemas/EnvironmentType'
+        context:
+          $ref: '#/components/schemas/SituationalContext'
+        targetSpecialty:
+          type: string
+          description: Especialidade alvo
+          example: pediatria
+        isActive:
+          type: boolean
+        displayOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - key
+        - name
+        - context
+        - isActive
+
+    WorkspaceContextPresetList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkspaceContextPreset'
+      required:
+        - data
+
+    # === MEDICAL SPECIALTIES ===
+    MedicalSpecialty:
+      type: object
+      description: Especialidade médica normalizada
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          description: Chave única da especialidade em snake_case
+          example: pediatria
+        name:
+          type: string
+          description: Nome para exibição
+          example: Pediatria
+        description:
+          type: string
+          nullable: true
+          description: Descrição opcional da especialidade
+        isActive:
+          type: boolean
+          description: Se a especialidade está ativa para seleção
+        displayOrder:
+          type: integer
+          description: Ordem de exibição em dropdowns
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - key
+        - name
+        - isActive
+        - displayOrder
+
+    MedicalSpecialtyList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MedicalSpecialty'
+      required:
+        - data
+
+    # === ASSISTANT ===
+    Assistant:
+      type: object
+      description: Resposta para clientes SaaS - sem configurações técnicas do modelo de IA
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Assistente Cardiológico
+        key:
+          type: string
+          example: assistente-cardiologico
+        description:
+          type: string
+          nullable: true
+        temperature:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 2
+          example: 0.7
+        systemPrompt:
+          type: string
+          minLength: 50
+        visibility:
+          $ref: '#/components/schemas/WorkspaceVisibility'
+        outputTemplateId:
+          type: string
+          format: uuid
+          description: ID do template de saída obrigatório do assistente (RN-070)
+        outputTemplate:
+          $ref: '#/components/schemas/OutputTemplate'
+          description: Template de saída expandido (quando solicitado via expand)
+        specialtyId:
+          type: string
+          format: uuid
+          nullable: true
+          description: FK para medical_specialties (normalizado)
+        specialty:
+          type: string
+          maxLength: 100
+          nullable: true
+          deprecated: true
+          description: Deprecated - usar specialtyId e specialtyName
+          example: Pediatria
+        specialtyName:
+          type: string
+          nullable: true
+          description: Nome da especialidade resolvido do FK
+          example: Pediatria
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+        createdBy:
+          type: string
+          format: uuid
+        ownerId:
+          type: string
+          format: uuid
+          nullable: true
+        isActive:
+          type: boolean
+        displayOrder:
+          type: integer
+        toolCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - temperature
+        - systemPrompt
+        - visibility
+        - outputTemplateId
+        - createdBy
+        - toolCount
+        - createdAt
+        - updatedAt
+
+    # Schema para rotas admin - inclui model e maxTokens
+    AssistantAdmin:
+      type: object
+      description: Resposta completa para administradores - inclui configurações do modelo de IA
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Assistente Cardiológico
+        key:
+          type: string
+          example: assistente-cardiologico
+        description:
+          type: string
+          nullable: true
+        model:
+          $ref: '#/components/schemas/AssistantModel'
+        temperature:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 2
+          example: 0.7
+        maxTokens:
+          type: integer
+          minimum: 100
+          maximum: 128000
+          example: 4096
+        systemPrompt:
+          type: string
+          minLength: 50
+        visibility:
+          $ref: '#/components/schemas/WorkspaceVisibility'
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+        outputTemplateId:
+          type: string
+          format: uuid
+          description: ID do template de saída obrigatório do assistente (RN-070)
+        specialtyId:
+          type: string
+          format: uuid
+          nullable: true
+          description: FK para medical_specialties (normalizado)
+        specialty:
+          type: string
+          maxLength: 100
+          nullable: true
+          deprecated: true
+          description: Deprecated - usar specialtyId
+        createdBy:
+          type: string
+          format: uuid
+        ownerId:
+          type: string
+          format: uuid
+          nullable: true
+        isActive:
+          type: boolean
+        displayOrder:
+          type: integer
+        toolCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - model
+        - temperature
+        - maxTokens
+        - systemPrompt
+        - visibility
+        - outputTemplateId
+        - createdBy
+        - toolCount
+        - createdAt
+        - updatedAt
+
+    AssistantCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 500
+        model:
+          $ref: '#/components/schemas/AssistantModel'
+        temperature:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 2
+        maxTokens:
+          type: integer
+          minimum: 100
+          maximum: 128000
+        systemPrompt:
+          type: string
+          minLength: 50
+        visibility:
+          $ref: '#/components/schemas/WorkspaceVisibility'
+        outputTemplateId:
+          type: string
+          format: uuid
+          description: ID do template de saída obrigatório para o assistente (RN-070)
+        specialtyId:
+          type: string
+          format: uuid
+          nullable: true
+          description: FK para medical_specialties (normalizado)
+        specialty:
+          type: string
+          maxLength: 100
+          nullable: true
+          deprecated: true
+          description: Deprecated - usar specialtyId
+          example: Pediatria
+        toolIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+      required:
+        - name
+        - model
+        - systemPrompt
+        - outputTemplateId
+
+    AssistantUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 500
+        model:
+          $ref: '#/components/schemas/AssistantModel'
+        temperature:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 2
+        maxTokens:
+          type: integer
+          minimum: 100
+          maximum: 128000
+        systemPrompt:
+          type: string
+          minLength: 50
+        visibility:
+          $ref: '#/components/schemas/WorkspaceVisibility'
+        outputTemplateId:
+          type: string
+          format: uuid
+          description: ID do template de saída (opcional - se não fornecido, mantém o atual)
+        specialty:
+          type: string
+          maxLength: 100
+          nullable: true
+          description: Especialidade médica para a qual este assistente foi projetado
+          example: Pediatria
+        toolIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    AssistantList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Assistant'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+      required:
+        - data
+        - meta
+
+    # === TOOL ===
+    ToolGroup:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Calculadoras Cardiológicas
+        description:
+          type: string
+          nullable: true
+        icon:
+          type: string
+          nullable: true
+        color:
+          type: string
+          nullable: true
+        displayOrder:
+          type: integer
+        toolCount:
+          type: integer
+      required:
+        - id
+        - name
+        - displayOrder
+        - toolCount
+
+    Tool:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Calculadora de IMC
+        key:
+          type: string
+          example: imc-calculator
+        description:
+          type: string
+          nullable: true
+        category:
+          $ref: '#/components/schemas/ToolCategory'
+        toolRole:
+          $ref: '#/components/schemas/ToolRole'
+        requiresPremium:
+          type: boolean
+        isPublic:
+          type: boolean
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolGroup'
+        formConfig:
+          type: object
+          description: Configuração do formulário de entrada
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - key
+        - category
+        - toolRole
+        - requiresPremium
+        - isPublic
+        - createdBy
+        - createdAt
+        - updatedAt
+
+    ToolCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        key:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+        description:
+          type: string
+          maxLength: 500
+        category:
+          $ref: '#/components/schemas/ToolCategory'
+        toolRole:
+          $ref: '#/components/schemas/ToolRole'
+        requiresPremium:
+          type: boolean
+        groupIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        formConfig:
+          type: object
+        auxiliaryConfig:
+          type: object
+          description: Configuração para ferramentas auxiliares (fórmulas)
+        intelligentConfig:
+          type: object
+          description: Configuração para ferramentas inteligentes (IA)
+      required:
+        - name
+        - key
+        - category
+        - toolRole
+
+    ToolUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 500
+        requiresPremium:
+          type: boolean
+        groupIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        formConfig:
+          type: object
+        auxiliaryConfig:
+          type: object
+        intelligentConfig:
+          type: object
+
+    ToolList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tool'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+      required:
+        - data
+        - meta
+
+    ToolExecutionRequest:
+      type: object
+      properties:
+        inputData:
+          type: object
+          description: Dados de entrada conforme formConfig da ferramenta
+      required:
+        - inputData
+
+    ToolExecutionResult:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        toolId:
+          type: string
+          format: uuid
+        inputData:
+          type: object
+        outputData:
+          type: object
+        executionTimeMs:
+          type: integer
+        tokensUsed:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - toolId
+        - inputData
+        - outputData
+        - executionTimeMs
+        - createdAt
+
+    ToolEmailRequest:
+      type: object
+      properties:
+        recipientEmail:
+          type: string
+          format: email
+        subject:
+          type: string
+        resultId:
+          type: string
+          format: uuid
+      required:
+        - recipientEmail
+        - resultId
+
+    # === TRANSCRIPTION ===
+    MedicalTranscription:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: ID sequencial (não UUID) para performance
+        userId:
+          type: string
+          format: uuid
+        fullText:
+          type: string
+        editedText:
+          type: string
+          nullable: true
+        model:
+          type: string
+          example: azure-speech
+        language:
+          type: string
+          example: pt-BR
+        durationSeconds:
+          type: integer
+        confidenceScore:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        isEdited:
+          type: boolean
+        anonymized:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - fullText
+        - model
+        - language
+        - durationSeconds
+        - confidenceScore
+        - isEdited
+        - anonymized
+        - createdAt
+        - updatedAt
+
+    TranscriptionStartRequest:
+      type: object
+      properties:
+        language:
+          type: string
+          default: pt-BR
+        workspaceId:
+          type: string
+          format: uuid
+          nullable: true
+
+    TranscriptionStartResponse:
+      type: object
+      properties:
+        transcriptionId:
+          type: integer
+        websocketUrl:
+          type: string
+          format: uri
+          description: URL para conexão WebSocket de streaming
+        azureToken:
+          type: string
+          description: Token temporário para Azure Speech SDK
+      required:
+        - transcriptionId
+        - websocketUrl
+        - azureToken
+
+    TranscriptionUpdate:
+      type: object
+      properties:
+        editedText:
+          type: string
+      required:
+        - editedText
+
+    TranscriptionList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MedicalTranscription'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+      required:
+        - data
+        - meta
+
+    # === WORKSPACE RESULT ===
+    WorkspaceResult:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspaceId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        assistantId:
+          type: string
+          format: uuid
+        transcriptionId:
+          type: integer
+          nullable: true
+        status:
+          $ref: '#/components/schemas/ResultStatus'
+        inputData:
+          type: object
+        assistantResponse:
+          type: string
+          nullable: true
+        medicalNotes:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        processingTimeMs:
+          type: integer
+          nullable: true
+        tokensUsed:
+          type: integer
+          nullable: true
+        workspace:
+          $ref: '#/components/schemas/Workspace'
+        assistant:
+          $ref: '#/components/schemas/Assistant'
+        toolExecutions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolExecutionResult'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - workspaceId
+        - userId
+        - assistantId
+        - status
+        - createdAt
+        - updatedAt
+
+    WorkspaceResultList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkspaceResult'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+      required:
+        - data
+        - meta
+
+    WorkspaceProcessRequest:
+      type: object
+      properties:
+        assistantId:
+          type: string
+          format: uuid
+        transcriptionId:
+          type: integer
+          nullable: true
+        inputData:
+          type: object
+      required:
+        - assistantId
+
+    AddNotesRequest:
+      type: object
+      properties:
+        medicalNotes:
+          type: string
+          minLength: 1
+          maxLength: 10000
+      required:
+        - medicalNotes
+
+    # === LGPD ===
+    UserDataExport:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        profile:
+          $ref: '#/components/schemas/CustomerProfile'
+        workspaceResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkspaceResult'
+        transcriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/MedicalTranscription'
+        toolExecutions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolExecutionResult'
+        exportedAt:
+          type: string
+          format: date-time
+      required:
+        - user
+        - exportedAt
+
+    DataDeletionRequest:
+      type: object
+      properties:
+        confirmEmail:
+          type: string
+          format: email
+          description: Email para confirmar identidade
+        reason:
+          type: string
+          maxLength: 500
+      required:
+        - confirmEmail
+
+    DataDeletionResponse:
+      type: object
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - pending
+            - processing
+            - completed
+        estimatedCompletionDate:
+          type: string
+          format: date-time
+      required:
+        - requestId
+        - status
+
+    # === USER FAVORITES ===
+    UserFavorite:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        entityType:
+          type: string
+          enum:
+            - tool
+            - assistant
+            - workspace
+        entityId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - entityType
+        - entityId
+        - createdAt
+
+    # === OUTPUT TEMPLATES (RF-080 a RF-083) ===
+    OutputTemplate:
+      type: object
+      description: Template de saída para formatação de respostas de assistentes (RN-070)
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          description: Identificador único do template
+          example: pediatria-consulta
+        name:
+          type: string
+          example: Template Pediatria
+        description:
+          type: string
+          nullable: true
+        domain:
+          type: string
+          description: Domínio/especialidade médica
+          example: pediatria
+        tabs:
+          type: array
+          description: Configuração de abas do template
+          items:
+            $ref: '#/components/schemas/OutputTemplateTab'
+        renderingConfig:
+          type: object
+          description: Configurações de renderização (tema, layout, CSS)
+          properties:
+            theme:
+              type: string
+              enum: [light, dark]
+              default: light
+            layout:
+              type: string
+              enum: [tabs, accordion, sections]
+              default: tabs
+            customCSS:
+              type: string
+              nullable: true
+        isDefault:
+          type: boolean
+          description: Se é o template padrão do domínio
+        createdBy:
+          type: string
+          format: uuid
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - key
+        - name
+        - tabs
+        - isActive
+
+    OutputTemplateTab:
+      type: object
+      description: Configuração de uma aba do template
+      properties:
+        id:
+          type: string
+          example: anamnese
+        title:
+          type: string
+          example: Anamnese
+        icon:
+          type: string
+          example: clipboard
+        dataPath:
+          type: string
+          description: Caminho para extrair dados da resposta do assistente
+          example: anamnesis
+        description:
+          type: string
+          nullable: true
+      required:
+        - id
+        - title
+        - dataPath
+
+    OutputTemplateCreateRequest:
+      type: object
+      properties:
+        key:
+          type: string
+          minLength: 2
+          maxLength: 100
+        name:
+          type: string
+          minLength: 2
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+        domain:
+          type: string
+        tabs:
+          type: array
+          items:
+            $ref: '#/components/schemas/OutputTemplateTab'
+        renderingConfig:
+          type: object
+        isDefault:
+          type: boolean
+          default: false
+      required:
+        - key
+        - name
+        - tabs
+
+    OutputTemplateUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        domain:
+          type: string
+        tabs:
+          type: array
+          items:
+            $ref: '#/components/schemas/OutputTemplateTab'
+        renderingConfig:
+          type: object
+        isDefault:
+          type: boolean
+        isActive:
+          type: boolean
+
+    # === GROUPS (RF-084 a RF-085) ===
+    Group:
+      type: object
+      description: Grupo de ferramentas para organização
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Calculadoras Pediátricas
+        key:
+          type: string
+          example: calculadoras-pediatricas
+        description:
+          type: string
+          nullable: true
+        icon:
+          type: string
+          example: calculator
+        color:
+          type: string
+          example: "#4CAF50"
+        displayOrder:
+          type: integer
+        toolCount:
+          type: integer
+          description: Quantidade de ferramentas no grupo
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - isActive
+
+    GroupCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        key:
+          type: string
+          minLength: 2
+          maxLength: 50
+        description:
+          type: string
+          nullable: true
+        icon:
+          type: string
+        color:
+          type: string
+        displayOrder:
+          type: integer
+          default: 0
+      required:
+        - name
+
+    GroupUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        key:
+          type: string
+        description:
+          type: string
+          nullable: true
+        icon:
+          type: string
+        color:
+          type: string
+        displayOrder:
+          type: integer
+        isActive:
+          type: boolean
+
+  # ============================================
+  # RESPONSES REUTILIZÁVEIS
+  # ============================================
+
+  responses:
+    BadRequest:
+      description: Requisição inválida
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: https://api.veridia-tools.com/errors/bad-request
+            title: Bad Request
+            status: 400
+            detail: Formato de requisição inválido
+
+    Unauthorized:
+      description: Não autenticado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: https://api.veridia-tools.com/errors/unauthorized
+            title: Unauthorized
+            status: 401
+            detail: Token inválido ou expirado
+
+    Forbidden:
+      description: Sem permissão
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: https://api.veridia-tools.com/errors/forbidden
+            title: Forbidden
+            status: 403
+            detail: Você não tem permissão para esta ação
+
+    NotFound:
+      description: Recurso não encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: https://api.veridia-tools.com/errors/not-found
+            title: Not Found
+            status: 404
+            detail: Recurso não encontrado
+
+    ValidationError:
+      description: Erro de validação
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: https://api.veridia-tools.com/errors/validation
+            title: Validation Error
+            status: 422
+            detail: Dados inválidos
+            errors:
+              - field: email
+                message: Formato de email inválido
+
+    TooManyRequests:
+      description: Rate limit excedido
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: https://api.veridia-tools.com/errors/rate-limit
+            title: Too Many Requests
+            status: 429
+            detail: Limite de requisições excedido. Tente novamente em 60 segundos.
+
+    InternalError:
+      description: Erro interno do servidor
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: https://api.veridia-tools.com/errors/internal
+            title: Internal Server Error
+            status: 500
+            detail: Ocorreu um erro inesperado
+
+  # ============================================
+  # PARAMETERS REUTILIZÁVEIS
+  # ============================================
+
+  parameters:
+    PathId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: ID do recurso
+
+    PathTranscriptionId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: ID da transcrição
+
+    QueryPage:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Número da página
+
+    QueryPerPage:
+      name: perPage
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Itens por página
+
+    QuerySort:
+      name: sort
+      in: query
+      schema:
+        type: string
+        pattern: '^-?[a-zA-Z_]+$'
+      description: |
+        Campo para ordenação.
+        Prefixo `-` para ordem decrescente.
+        Exemplo: `-createdAt` para mais recentes primeiro.
+
+    QuerySearch:
+      name: search
+      in: query
+      schema:
+        type: string
+        maxLength: 100
+      description: Termo de busca
+
+    # === USER ASSISTANT CUSTOMIZATION SCHEMAS ===
+
+    UserToolPreference:
+      type: object
+      properties:
+        toolId:
+          type: string
+          format: uuid
+        toolName:
+          type: string
+        toolKey:
+          type: string
+        toolCategory:
+          type: string
+        requiresPremium:
+          type: boolean
+        isEnabled:
+          type: boolean
+          description: Se a ferramenta está habilitada para o usuário
+        displayOrder:
+          type: integer
+          nullable: true
+          description: Ordem de exibição personalizada
+      required:
+        - toolId
+        - toolName
+        - toolKey
+        - isEnabled
+
+    UserToolPreferencesRequest:
+      type: object
+      properties:
+        preferences:
+          type: array
+          items:
+            type: object
+            properties:
+              toolId:
+                type: string
+                format: uuid
+              isEnabled:
+                type: boolean
+              displayOrder:
+                type: integer
+                nullable: true
+            required:
+              - toolId
+              - isEnabled
+      required:
+        - preferences
+
+    UserToolPreferencesResponse:
+      type: object
+      properties:
+        assistantId:
+          type: string
+          format: uuid
+        assistantName:
+          type: string
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserToolPreference'
+      required:
+        - assistantId
+        - tools
+
+    UserOutputTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        assistantId:
+          type: string
+          format: uuid
+        baseTemplateId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          nullable: true
+        tabs:
+          type: array
+          items:
+            $ref: '#/components/schemas/OutputTemplateTab'
+        renderingConfig:
+          type: object
+          nullable: true
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - assistantId
+        - baseTemplateId
+        - name
+        - tabs
+        - isActive
+
+    CreateUserOutputTemplateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          description: Nome do template personalizado (opcional, usa nome base se não informado)
+      required: []
+
+    UpdateUserOutputTemplateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          nullable: true
+        tabs:
+          type: array
+          items:
+            $ref: '#/components/schemas/OutputTemplateTab'
+        renderingConfig:
+          type: object
+          nullable: true
+      required: []
+
+    UserAssistantCustomizationResponse:
+      type: object
+      description: Resposta consolidada com todas as personalizações do usuário para um assistente
+      properties:
+        assistantId:
+          type: string
+          format: uuid
+        assistantName:
+          type: string
+        toolPreferences:
+          $ref: '#/components/schemas/UserToolPreferencesResponse'
+        outputTemplate:
+          $ref: '#/components/schemas/UserOutputTemplate'
+          nullable: true
+          description: Template personalizado (null se usando padrão)
+        defaultTemplate:
+          $ref: '#/components/schemas/OutputTemplate'
+          description: Template padrão do assistente (para referência)
+      required:
+        - assistantId
+        - assistantName
+        - toolPreferences
+        - defaultTemplate
+
+# ============================================
+# PATHS
+# ============================================
+
+paths:
+  # === AUTH ===
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Login com email/senha
+      description: |
+        Autentica usuário e retorna tokens JWT.
+
+        **Requisitos:** RF-001
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login bem-sucedido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/google:
+    get:
+      tags:
+        - Auth
+      summary: Iniciar autenticação Google OAuth
+      description: |
+        Redireciona o usuário para a página de autenticação do Google OAuth.
+
+        **Requisitos:** RF-002
+
+        **Fluxo:**
+        1. Cliente chama GET /auth/google
+        2. API redireciona (302) para Google OAuth
+        3. Usuário autentica no Google
+        4. Google redireciona para /auth/callback com code e state
+      operationId: initiateGoogleOAuth
+      responses:
+        '302':
+          description: Redirecionamento para Google OAuth
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+                example: https://accounts.google.com/o/oauth2/v2/auth?client_id=...
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags:
+        - Auth
+      summary: Login com Google OAuth (ID Token)
+      description: |
+        Autentica usuário via Google OAuth usando ID Token previamente validado no cliente.
+
+        **Requisitos:** RF-002
+      operationId: loginGoogle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleLoginRequest'
+      responses:
+        '200':
+          description: Login bem-sucedido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Registrar novo usuário
+      description: |
+        Cria nova conta de usuário.
+
+        **Requisitos:** RF-003
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Usuário criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '409':
+          description: Email já cadastrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/forgot-password:
+    post:
+      tags:
+        - Auth
+      summary: Solicitar recuperação de senha
+      description: |
+        Envia email com link de recuperação.
+
+        **Requisitos:** RF-004
+      operationId: forgotPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+      responses:
+        '202':
+          description: Email enviado (se existir)
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/reset-password:
+    post:
+      tags:
+        - Auth
+      summary: Redefinir senha
+      description: |
+        Redefine senha usando token recebido por email.
+
+        **Requisitos:** RF-004
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200':
+          description: Senha redefinida
+        '401':
+          description: Token inválido ou expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: Encerrar sessão
+      description: |
+        Invalida o token atual.
+
+        **Requisitos:** RF-005
+      operationId: logout
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Logout bem-sucedido
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Auth
+      summary: Renovar token
+      description: Obtém novo access token usando refresh token
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Token renovado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/me:
+    get:
+      tags:
+        - Auth
+      summary: Obter usuário autenticado
+      description: |
+        Retorna dados do usuário atualmente autenticado.
+
+        **Requisitos:** RF-001
+      operationId: getAuthenticatedUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dados do usuário autenticado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/UserWithProfile'
+              example:
+                user:
+                  id: "e504e56b-4ddd-4e3e-ab57-f60ae833ef2c"
+                  email: "caiosouzas@gmail.com"
+                  firstName: "Caio"
+                  lastName: "Souza"
+                  userType: "admin"
+                  emailVerified: true
+                  isActive: true
+                  lastLogin: "2025-11-27T14:01:26.778Z"
+                  createdAt: "2025-08-29T15:30:42.236Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/callback:
+    get:
+      tags:
+        - Auth
+      summary: Callback do Google OAuth
+      description: |
+        Endpoint de callback para processar a resposta do Google OAuth.
+
+        **Requisitos:** RF-002
+
+        **Fluxo:**
+        1. Google redireciona para este endpoint com code e state
+        2. API valida o code e state
+        3. API troca o code por tokens do Google
+        4. API cria ou atualiza o usuário no sistema
+        5. API redireciona para o frontend com tokens JWT
+      operationId: handleGoogleOAuthCallback
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Código de autorização do Google
+          example: "2312312"
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Token CSRF para validar a requisição
+          example: "3123123"
+      responses:
+        '302':
+          description: Redirecionamento para o frontend com tokens
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+                example: https://app.veridia-tools.com/auth/callback?access_token=...&refresh_token=...
+        '400':
+          description: Código ou state inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # === USERS ===
+  /users/me:
+    get:
+      tags:
+        - Users
+      summary: Obter usuário atual
+      description: Retorna dados do usuário autenticado com perfil
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dados do usuário
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserWithProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      tags:
+        - Users
+      summary: Atualizar perfil
+      description: Atualiza dados do usuário autenticado
+      operationId: updateCurrentUser
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firstName:
+                  type: string
+                lastName:
+                  type: string
+                crm:
+                  type: string
+                specialty:
+                  type: string
+                clinicName:
+                  type: string
+      responses:
+        '200':
+          description: Perfil atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserWithProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /users/me/stats:
+    get:
+      tags:
+        - Users
+      summary: Obter estatísticas do usuário
+      description: |
+        Retorna estatísticas agregadas do usuário autenticado incluindo:
+        - Consultas realizadas hoje
+        - Consultas pendentes/em processamento
+        - Consultas do mês atual
+        - Total de workspaces disponíveis
+        - Total de ferramentas utilizadas
+
+        **Novidade:** Endpoint criado em 2025-12-14
+      operationId: getUserStats
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Estatísticas do usuário
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserStats'
+              example:
+                consultationsToday: 8
+                pendingConsultations: 2
+                consultationsThisMonth: 156
+                totalWorkspaces: 4
+                totalToolsUsed: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/preferences:
+    get:
+      tags:
+        - Users
+      summary: Obter preferências do usuário
+      description: Retorna as preferências do usuário autenticado
+      operationId: getUserPreferences
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Preferências do usuário
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPreferences'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    patch:
+      tags:
+        - Users
+      summary: Atualizar preferências do usuário
+      description: Atualiza parcialmente as preferências do usuário autenticado
+      operationId: updateUserPreferences
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePreferencesRequest'
+      responses:
+        '200':
+          description: Preferências atualizadas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPreferences'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  # === SUBSCRIPTIONS ===
+  /subscriptions/me:
+    get:
+      tags:
+        - Subscriptions
+      summary: Ver assinatura atual
+      description: |
+        Retorna status da assinatura do usuário.
+
+        **Requisitos:** RF-010
+      operationId: getCurrentSubscription
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dados da assinatura
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /subscriptions/plans:
+    get:
+      tags:
+        - Subscriptions
+      summary: Listar planos disponíveis
+      description: |
+        Retorna lista de planos de assinatura.
+
+        **Requisitos:** RF-010
+      operationId: listPlans
+      responses:
+        '200':
+          description: Lista de planos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SubscriptionPlanResponse'
+
+  /subscriptions/checkout:
+    post:
+      tags:
+        - Subscriptions
+      summary: Criar sessão de checkout
+      description: |
+        Cria sessão de checkout no Stripe para upgrade.
+
+        **Requisitos:** RF-011
+      operationId: createCheckoutSession
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckoutSessionRequest'
+      responses:
+        '200':
+          description: Sessão criada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutSessionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /subscriptions/portal:
+    get:
+      tags:
+        - Subscriptions
+      summary: Obter URL do portal Stripe
+      description: |
+        Retorna URL do Customer Portal do Stripe para gerenciar assinatura.
+
+        **Requisitos:** RF-012
+      operationId: getStripePortal
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: URL do portal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    format: uri
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /subscriptions/cancel:
+    post:
+      tags:
+        - Subscriptions
+      summary: Cancelar assinatura
+      description: |
+        Cancela assinatura ao final do período atual.
+
+        **Requisitos:** RF-013
+      operationId: cancelSubscription
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Assinatura marcada para cancelamento
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /subscriptions/history:
+    get:
+      tags:
+        - Subscriptions
+      summary: Histórico de assinatura
+      description: Retorna histórico de mudanças na assinatura
+      operationId: getSubscriptionHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/QueryPage'
+        - $ref: '#/components/parameters/QueryPerPage'
+      responses:
+        '200':
+          description: Histórico de assinatura
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        oldStatus:
+                          $ref: '#/components/schemas/SubscriptionStatus'
+                        newStatus:
+                          $ref: '#/components/schemas/SubscriptionStatus'
+                        changedAt:
+                          type: string
+                          format: date-time
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # === CONTEXT PRESETS (RF-086) ===
+  /context-presets:
+    get:
+      tags:
+        - ContextPresets
+      summary: Listar presets de contexto situacional
+      description: |
+        Retorna todos os presets de contexto situacional ativos.
+        Presets são configurações pré-definidas para cenários comuns
+        (UTI Pediátrica, Ambulatório SUS, Consultório Particular, etc.)
+
+        **Requisitos:** RF-086
+      operationId: listContextPresets
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: environmentType
+          in: query
+          description: Filtrar por tipo de ambiente
+          schema:
+            $ref: '#/components/schemas/EnvironmentType'
+        - name: targetSpecialty
+          in: query
+          description: Filtrar por especialidade alvo
+          schema:
+            type: string
+            example: pediatria
+      responses:
+        '200':
+          description: Lista de presets de contexto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceContextPresetList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /context-presets/{id}:
+    get:
+      tags:
+        - ContextPresets
+      summary: Obter preset de contexto por ID
+      description: |
+        Retorna detalhes de um preset de contexto específico.
+
+        **Requisitos:** RF-086
+      operationId: getContextPresetById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID do preset
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Preset de contexto encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceContextPreset'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # === SPECIALTIES ===
+  /specialties:
+    get:
+      tags:
+        - Specialties
+      summary: Listar especialidades médicas
+      description: |
+        Retorna todas as especialidades médicas ativas para seleção em formulários.
+        Ordenado por displayOrder.
+
+        **Normalização:** Especialidades são normalizadas para garantir consistência
+        de dados em customer_profiles e assistants.
+      operationId: listSpecialties
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: isActive
+          in: query
+          description: Filtrar apenas especialidades ativas (padrão true)
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Lista de especialidades médicas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicalSpecialtyList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /specialties/{id}:
+    get:
+      tags:
+        - Specialties
+      summary: Obter especialidade por ID
+      description: |
+        Retorna detalhes de uma especialidade médica específica.
+      operationId: getSpecialtyById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID da especialidade
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Especialidade encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicalSpecialty'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # === WORKSPACES ===
+  /workspaces:
+    get:
+      tags:
+        - Workspaces
+      summary: Listar workspaces
+      description: |
+        Retorna workspaces públicos e privados do usuário.
+
+        **Requisitos:** RF-020
+      operationId: listWorkspaces
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/QueryPage'
+        - $ref: '#/components/parameters/QueryPerPage'
+        - $ref: '#/components/parameters/QuerySort'
+        - $ref: '#/components/parameters/QuerySearch'
+        - name: visibility
+          in: query
+          schema:
+            $ref: '#/components/schemas/WorkspaceVisibility'
+      responses:
+        '200':
+          description: Lista de workspaces
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - Workspaces
+      summary: Criar workspace
+      description: |
+        Cria novo workspace. Requer permissão admin.
+
+        **Requisitos:** RF-022
+      operationId: createWorkspace
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkspaceCreate'
+      responses:
+        '201':
+          description: Workspace criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /workspaces/{id}:
+    get:
+      tags:
+        - Workspaces
+      summary: Obter workspace
+      description: |
+        Retorna detalhes de um workspace.
+
+        **Requisitos:** RF-021
+      operationId: getWorkspace
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: Dados do workspace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Workspaces
+      summary: Atualizar workspace
+      description: |
+        Atualiza dados do workspace. Requer permissão admin.
+
+        **Requisitos:** RF-023
+      operationId: updateWorkspace
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkspaceUpdate'
+      responses:
+        '200':
+          description: Workspace atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workspace'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      tags:
+        - Workspaces
+      summary: Excluir workspace
+      description: Exclui workspace. Requer permissão admin.
+      operationId: deleteWorkspace
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '204':
+          description: Workspace excluído
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{id}/request-private:
+    post:
+      tags:
+        - Workspaces
+      summary: Solicitar workspace privado
+      description: |
+        Solicita um workspace privado personalizado.
+
+        **Requisitos:** RF-024
+      operationId: requestPrivateWorkspace
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkspacePrivateRequest'
+      responses:
+        '202':
+          description: Solicitação recebida
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /workspaces/{id}/assistants:
+    get:
+      tags:
+        - Workspaces
+      summary: Listar assistentes do workspace
+      description: Retorna assistentes configurados para o workspace
+      operationId: listWorkspaceAssistants
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: Lista de assistentes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{id}/tools:
+    get:
+      tags:
+        - Workspaces
+      summary: Listar ferramentas do workspace
+      description: Retorna ferramentas configuradas para o workspace
+      operationId: listWorkspaceTools
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: Lista de ferramentas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{id}/process:
+    post:
+      tags:
+        - Workspaces
+      summary: Processar com assistente
+      description: |
+        Processa dados com o assistente selecionado.
+
+        **Requisitos:** RF-027
+      operationId: processWorkspace
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkspaceProcessRequest'
+      responses:
+        '200':
+          description: Processamento iniciado/concluído
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  # === ASSISTANTS ===
+  /assistants:
+    get:
+      tags:
+        - Assistants
+      summary: Listar assistentes
+      description: |
+        Retorna assistentes públicos.
+
+        **Requisitos:** RF-025
+      operationId: listAssistants
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/QueryPage'
+        - $ref: '#/components/parameters/QueryPerPage'
+        - $ref: '#/components/parameters/QuerySort'
+        - $ref: '#/components/parameters/QuerySearch'
+        - name: specialty
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+          description: Filtrar assistentes por especialidade médica
+          example: Pediatria
+      responses:
+        '200':
+          description: Lista de assistentes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - Assistants
+      summary: Criar assistente
+      description: |
+        Cria novo assistente. Requer permissão admin.
+
+        **Requisitos:** RF-028
+      operationId: createAssistant
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantCreate'
+      responses:
+        '201':
+          description: Assistente criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assistant'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /assistants/{id}:
+    get:
+      tags:
+        - Assistants
+      summary: Obter assistente
+      description: Retorna detalhes de um assistente
+      operationId: getAssistant
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: Dados do assistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assistant'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Assistants
+      summary: Atualizar assistente
+      description: Atualiza dados do assistente. Requer permissão admin.
+      operationId: updateAssistant
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssistantUpdate'
+      responses:
+        '200':
+          description: Assistente atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assistant'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      tags:
+        - Assistants
+      summary: Excluir assistente
+      description: Exclui assistente. Requer permissão admin.
+      operationId: deleteAssistant
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '204':
+          description: Assistente excluído
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{workspaceId}/assistants/{assistantId}/select:
+    post:
+      tags:
+        - Assistants
+      summary: Selecionar assistente para workspace
+      description: |
+        Seleciona assistente como padrão para o workspace.
+
+        **Requisitos:** RF-025, RF-026
+      operationId: selectWorkspaceAssistant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: assistantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Assistente selecionado
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # === TOOLS ===
+  /tools:
+    get:
+      tags:
+        - Tools
+      summary: Listar ferramentas
+      description: |
+        Retorna ferramentas disponíveis, opcionalmente filtradas por grupo.
+
+        **Requisitos:** RF-030
+      operationId: listTools
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/QueryPage'
+        - $ref: '#/components/parameters/QueryPerPage'
+        - $ref: '#/components/parameters/QuerySort'
+        - $ref: '#/components/parameters/QuerySearch'
+        - name: groupId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filtrar por grupo
+        - name: category
+          in: query
+          schema:
+            $ref: '#/components/schemas/ToolCategory'
+        - name: toolRole
+          in: query
+          schema:
+            $ref: '#/components/schemas/ToolRole'
+      responses:
+        '200':
+          description: Lista de ferramentas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - Tools
+      summary: Criar ferramenta
+      description: |
+        Cria nova ferramenta. Requer permissão admin.
+
+        **Requisitos:** RF-035
+      operationId: createTool
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolCreate'
+      responses:
+        '201':
+          description: Ferramenta criada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tool'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /tools/{id}:
+    get:
+      tags:
+        - Tools
+      summary: Obter ferramenta
+      description: |
+        Retorna detalhes de uma ferramenta.
+
+        **Requisitos:** RF-031
+      operationId: getTool
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: Dados da ferramenta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tool'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Tools
+      summary: Atualizar ferramenta
+      description: Atualiza dados da ferramenta. Requer permissão admin.
+      operationId: updateTool
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolUpdate'
+      responses:
+        '200':
+          description: Ferramenta atualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tool'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      tags:
+        - Tools
+      summary: Excluir ferramenta
+      description: Exclui ferramenta. Requer permissão admin.
+      operationId: deleteTool
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '204':
+          description: Ferramenta excluída
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tools/{id}/execute:
+    post:
+      tags:
+        - Tools
+      summary: Executar ferramenta de entrada
+      description: |
+        Executa ferramenta de entrada (calculadora, formulário).
+
+        **Requisitos:** RF-031
+      operationId: executeTool
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolExecutionRequest'
+      responses:
+        '200':
+          description: Resultado da execução
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolExecutionResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /tools/{id}/generate:
+    post:
+      tags:
+        - Tools
+      summary: Gerar saída com ferramenta de IA
+      description: |
+        Gera documento/análise usando ferramenta inteligente.
+
+        **Requisitos:** RF-032
+      operationId: generateWithTool
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolExecutionRequest'
+      responses:
+        '200':
+          description: Resultado gerado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolExecutionResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /tools/{id}/email:
+    post:
+      tags:
+        - Tools
+      summary: Enviar resultado por email
+      description: |
+        Envia resultado da ferramenta por email.
+
+        **Requisitos:** RF-033
+      operationId: emailToolResult
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolEmailRequest'
+      responses:
+        '200':
+          description: Email enviado
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /tools/{id}/favorite:
+    post:
+      tags:
+        - Tools
+      summary: Favoritar/desfavoritar ferramenta
+      description: |
+        Adiciona ou remove ferramenta dos favoritos.
+
+        **Requisitos:** RF-034
+      operationId: toggleToolFavorite
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: Status de favorito atualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  isFavorite:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tool-groups:
+    get:
+      tags:
+        - Tools
+      summary: Listar grupos de ferramentas
+      description: Retorna grupos organizacionais de ferramentas
+      operationId: listToolGroups
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de grupos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ToolGroup'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /user-favorites:
+    get:
+      tags:
+        - Tools
+      summary: Listar favoritos do usuário
+      description: |
+        Retorna ferramentas, assistentes e workspaces favoritos.
+
+        **Requisitos:** RF-034
+      operationId: listUserFavorites
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: entityType
+          in: query
+          schema:
+            type: string
+            enum:
+              - tool
+              - assistant
+              - workspace
+      responses:
+        '200':
+          description: Lista de favoritos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserFavorite'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # === TRANSCRIPTIONS ===
+  /transcriptions/start:
+    post:
+      tags:
+        - Transcriptions
+      summary: Iniciar transcrição
+      description: |
+        Inicia nova sessão de transcrição em tempo real.
+
+        **Requisitos:** RF-040
+      operationId: startTranscription
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TranscriptionStartRequest'
+      responses:
+        '200':
+          description: Sessão iniciada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranscriptionStartResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /transcriptions/{id}:
+    get:
+      tags:
+        - Transcriptions
+      summary: Obter transcrição
+      description: Retorna detalhes de uma transcrição
+      operationId: getTranscription
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathTranscriptionId'
+      responses:
+        '200':
+          description: Dados da transcrição
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicalTranscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Transcriptions
+      summary: Editar transcrição
+      description: |
+        Edita texto da transcrição salva.
+
+        **Requisitos:** RF-043
+      operationId: updateTranscription
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathTranscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TranscriptionUpdate'
+      responses:
+        '200':
+          description: Transcrição atualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicalTranscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /transcriptions/{id}/pause:
+    post:
+      tags:
+        - Transcriptions
+      summary: Pausar transcrição
+      description: |
+        Pausa sessão de transcrição em andamento.
+
+        **Requisitos:** RF-041
+      operationId: pauseTranscription
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathTranscriptionId'
+      responses:
+        '200':
+          description: Transcrição pausada
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /transcriptions/{id}/resume:
+    post:
+      tags:
+        - Transcriptions
+      summary: Retomar transcrição
+      description: |
+        Retoma sessão de transcrição pausada.
+
+        **Requisitos:** RF-041
+      operationId: resumeTranscription
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathTranscriptionId'
+      responses:
+        '200':
+          description: Transcrição retomada
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /transcriptions/{id}/stop:
+    post:
+      tags:
+        - Transcriptions
+      summary: Parar e salvar transcrição
+      description: |
+        Para sessão e salva transcrição final.
+
+        **Requisitos:** RF-042
+      operationId: stopTranscription
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathTranscriptionId'
+      responses:
+        '200':
+          description: Transcrição salva
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicalTranscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /transcriptions/{id}/anonymize:
+    post:
+      tags:
+        - Transcriptions
+      summary: Anonimizar transcrição
+      description: |
+        Remove dados pessoais da transcrição.
+
+        **Requisitos:** RF-060
+      operationId: anonymizeTranscription
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathTranscriptionId'
+      responses:
+        '200':
+          description: Transcrição anonimizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicalTranscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # === RESULTS ===
+  /workspace-results:
+    get:
+      tags:
+        - Results
+      summary: Listar histórico de consultas
+      description: |
+        Retorna histórico de processamentos do usuário.
+
+        **Requisitos:** RF-050, RF-051
+      operationId: listWorkspaceResults
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/QueryPage'
+        - $ref: '#/components/parameters/QueryPerPage'
+        - $ref: '#/components/parameters/QuerySort'
+        - $ref: '#/components/parameters/QuerySearch'
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filtrar por workspace
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ResultStatus'
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Lista de resultados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceResultList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workspace-results/{id}:
+    get:
+      tags:
+        - Results
+      summary: Obter resultado
+      description: Retorna detalhes de um resultado
+      operationId: getWorkspaceResult
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: Dados do resultado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workspace-results/{id}/add-notes:
+    post:
+      tags:
+        - Results
+      summary: Adicionar notas médicas
+      description: |
+        Adiciona notas ao resultado do processamento.
+
+        **Requisitos:** RF-044
+      operationId: addMedicalNotes
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddNotesRequest'
+      responses:
+        '200':
+          description: Notas adicionadas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /workspace-results/{id}/export:
+    get:
+      tags:
+        - Results
+      summary: Exportar consulta
+      description: |
+        Exporta resultado em formato PDF ou JSON.
+
+        **Requisitos:** RF-052
+      operationId: exportWorkspaceResult
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum:
+              - pdf
+              - json
+            default: pdf
+      responses:
+        '200':
+          description: Arquivo exportado
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # === LGPD ===
+  /user-data/export:
+    get:
+      tags:
+        - LGPD
+      summary: Exportar meus dados
+      description: |
+        Exporta todos os dados do usuário (LGPD Art. 18).
+
+        **Requisitos:** RF-061
+      operationId: exportUserData
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dados exportados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDataExport'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /user-data/delete:
+    post:
+      tags:
+        - LGPD
+      summary: Solicitar exclusão de dados
+      description: |
+        Solicita exclusão de todos os dados (LGPD Art. 18).
+
+        **Requisitos:** RF-062
+      operationId: requestDataDeletion
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DataDeletionRequest'
+      responses:
+        '202':
+          description: Solicitação recebida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataDeletionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /audit-logs:
+    get:
+      tags:
+        - LGPD
+      summary: Visualizar logs de auditoria
+      description: Retorna logs de auditoria do usuário
+      operationId: listAuditLogs
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/QueryPage'
+        - $ref: '#/components/parameters/QueryPerPage'
+        - name: action
+          in: query
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Lista de logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        action:
+                          type: string
+                        entityType:
+                          type: string
+                        entityId:
+                          type: string
+                        timestamp:
+                          type: string
+                          format: date-time
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # === ADMIN ===
+  /admin/assistants:
+    get:
+      tags:
+        - Admin
+      summary: '[Admin] Listar assistentes com configuração completa'
+      description: |
+        Lista todos os assistentes incluindo configurações do modelo de IA (model, maxTokens).
+        Requer permissão admin ou master.
+      operationId: adminListAssistants
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/QueryPage'
+        - $ref: '#/components/parameters/QueryPerPage'
+        - $ref: '#/components/parameters/QuerySearch'
+        - name: visibility
+          in: query
+          schema:
+            $ref: '#/components/schemas/WorkspaceVisibility'
+        - name: model
+          in: query
+          schema:
+            $ref: '#/components/schemas/AssistantModel'
+        - name: specialty
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lista de assistentes com configuração completa
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AssistantAdmin'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/assistants/{id}:
+    get:
+      tags:
+        - Admin
+      summary: '[Admin] Obter assistente com configuração completa'
+      description: |
+        Retorna detalhes de um assistente incluindo configurações do modelo de IA (model, maxTokens).
+        Requer permissão admin ou master.
+      operationId: adminGetAssistant
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: Dados completos do assistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantAdmin'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/users:
+    get:
+      tags:
+        - Admin
+      summary: Listar todos os usuários
+      description: Lista todos os usuários do sistema. Requer admin.
+      operationId: adminListUsers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/QueryPage'
+        - $ref: '#/components/parameters/QueryPerPage'
+        - $ref: '#/components/parameters/QuerySort'
+        - $ref: '#/components/parameters/QuerySearch'
+        - name: userType
+          in: query
+          schema:
+            $ref: '#/components/schemas/UserType'
+        - name: subscriptionStatus
+          in: query
+          schema:
+            $ref: '#/components/schemas/SubscriptionStatus'
+      responses:
+        '200':
+          description: Lista de usuários
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserWithProfile'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/analytics:
+    get:
+      tags:
+        - Admin
+      summary: Ver analytics da plataforma
+      description: Retorna métricas de uso da plataforma. Requer admin.
+      operationId: getAnalytics
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Dados de analytics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalUsers:
+                    type: integer
+                  activeUsers:
+                    type: integer
+                  premiumUsers:
+                    type: integer
+                  totalWorkspaces:
+                    type: integer
+                  totalTools:
+                    type: integer
+                  totalAssistants:
+                    type: integer
+                  totalTranscriptions:
+                    type: integer
+                  aiTokensUsed:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/ai-usage:
+    get:
+      tags:
+        - Admin
+      summary: Ver uso de IA
+      description: Retorna estatísticas de uso de IA. Requer admin.
+      operationId: getAIUsage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: groupBy
+          in: query
+          schema:
+            type: string
+            enum:
+              - day
+              - week
+              - month
+            default: day
+      responses:
+        '200':
+          description: Dados de uso de IA
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalTokens:
+                    type: integer
+                  totalCost:
+                    type: number
+                    format: float
+                  byModel:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        model:
+                          type: string
+                        tokens:
+                          type: integer
+                        cost:
+                          type: number
+                  byPeriod:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        period:
+                          type: string
+                        tokens:
+                          type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ============================================
+  # ADMIN - PLANS (Consolidated Plan Management)
+  # ============================================
+
+  /admin/plans:
+    get:
+      tags:
+        - Admin
+      summary: Listar todos os planos
+      description: Retorna lista de todos os planos cadastrados. Requer admin.
+      operationId: getAllPlans
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de planos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags:
+        - Admin
+      summary: Criar novo plano
+      description: Cria um novo plano de assinatura. Requer admin.
+      operationId: createPlan
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlanRequest'
+      responses:
+        '201':
+          description: Plano criado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /admin/plans/active:
+    get:
+      tags:
+        - Admin
+      summary: Listar planos ativos
+      description: Retorna apenas os planos ativos disponíveis para novas assinaturas.
+      operationId: getActivePlans
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de planos ativos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/plans/{id}:
+    get:
+      tags:
+        - Admin
+      summary: Obter plano por ID
+      description: Retorna detalhes de um plano específico. Requer admin.
+      operationId: getPlanById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Detalhes do plano
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Admin
+      summary: Atualizar plano
+      description: Atualiza um plano existente. Requer admin.
+      operationId: updatePlan
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePlanRequest'
+      responses:
+        '200':
+          description: Plano atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      tags:
+        - Admin
+      summary: Desativar plano
+      description: Desativa um plano (soft delete). Requer admin.
+      operationId: deactivatePlan
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Plano desativado com sucesso
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/plans/key/{key}:
+    get:
+      tags:
+        - Admin
+      summary: Obter plano por chave
+      description: Retorna detalhes de um plano pela chave única (ex&#58; free, pro, premium).
+      operationId: getPlanByKey
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "pro"
+      responses:
+        '200':
+          description: Detalhes do plano
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/plans/user/{userId}/usage:
+    get:
+      tags:
+        - Admin
+      summary: Obter resumo de uso do usuário
+      description: Retorna resumo de uso de IA e transcrição de um usuário específico.
+      operationId: getUserUsageSummary
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Resumo de uso do usuário
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserUsageSummaryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================
+  # OUTPUT TEMPLATES (RF-080 a RF-083)
+  # ============================================
+
+  /output-templates:
+    get:
+      tags:
+        - OutputTemplates
+      summary: Listar templates de saída
+      description: |
+        Retorna lista de templates de saída disponíveis.
+        - **RF-080**: Listar Output Templates
+      operationId: listOutputTemplates
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: domain
+          in: query
+          description: Filtrar por domínio
+          schema:
+            type: string
+        - name: isActive
+          in: query
+          description: Filtrar por status
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: perPage
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Lista de templates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OutputTemplate'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - OutputTemplates
+      summary: Criar template de saída
+      description: |
+        Cria um novo template de saída. Requer permissão admin.
+        - **RF-080**: Criar Output Template
+      operationId: createOutputTemplate
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OutputTemplateCreateRequest'
+      responses:
+        '201':
+          description: Template criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutputTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /output-templates/{id}:
+    get:
+      tags:
+        - OutputTemplates
+      summary: Obter template por ID
+      description: Retorna detalhes de um template específico.
+      operationId: getOutputTemplate
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Template encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutputTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - OutputTemplates
+      summary: Atualizar template
+      description: |
+        Atualiza um template existente. Requer permissão admin.
+        - **RF-081**: Editar Output Template
+      operationId: updateOutputTemplate
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OutputTemplateUpdateRequest'
+      responses:
+        '200':
+          description: Template atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutputTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - OutputTemplates
+      summary: Deletar template
+      description: |
+        Remove um template de saída. Requer permissão admin.
+        - **RF-082**: Deletar Output Template
+      operationId: deleteOutputTemplate
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Template deletado
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /output-templates/domain/{domain}:
+    get:
+      tags:
+        - OutputTemplates
+      summary: Listar templates por domínio
+      description: Retorna templates de um domínio específico.
+      operationId: getOutputTemplatesByDomain
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: domain
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Templates do domínio
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OutputTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /output-templates/domain/{domain}/default:
+    get:
+      tags:
+        - OutputTemplates
+      summary: Obter template padrão do domínio
+      description: Retorna o template padrão para um domínio específico.
+      operationId: getDefaultOutputTemplateByDomain
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: domain
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Template padrão
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutputTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /output-templates/{id}/set-default:
+    post:
+      tags:
+        - OutputTemplates
+      summary: Definir template como padrão
+      description: Define um template como padrão para seu domínio. Requer admin.
+      operationId: setOutputTemplateAsDefault
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Template definido como padrão
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutputTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================
+  # GROUPS - CRUD COMPLETO (RF-084, RF-085)
+  # ============================================
+
+  /groups:
+    get:
+      tags:
+        - Groups
+      summary: Listar grupos de ferramentas
+      description: |
+        Retorna lista de grupos de ferramentas disponíveis.
+        - **RF-084**: Listar Grupos
+      operationId: listGroups
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: perPage
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Lista de grupos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Group'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - Groups
+      summary: Criar grupo de ferramentas
+      description: |
+        Cria um novo grupo de ferramentas. Requer permissão admin.
+        - **RF-084**: Criar Grupo
+      operationId: createGroup
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupCreateRequest'
+      responses:
+        '201':
+          description: Grupo criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /groups/{id}:
+    get:
+      tags:
+        - Groups
+      summary: Obter grupo por ID
+      description: Retorna detalhes de um grupo específico.
+      operationId: getGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Grupo encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Groups
+      summary: Atualizar grupo
+      description: |
+        Atualiza um grupo existente. Requer permissão admin.
+        - **RF-084**: Editar Grupo
+      operationId: updateGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupUpdateRequest'
+      responses:
+        '200':
+          description: Grupo atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Groups
+      summary: Deletar grupo
+      description: |
+        Remove um grupo de ferramentas. Requer permissão admin.
+        - **RF-084**: Deletar Grupo
+      operationId: deleteGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Grupo deletado
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /groups/{id}/tools:
+    post:
+      tags:
+        - Groups
+      summary: Associar ferramentas ao grupo
+      description: |
+        Associa uma lista de ferramentas a um grupo. Requer admin.
+        - **RF-085**: Associar Ferramentas a Grupos
+      operationId: addToolsToGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                toolIds:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+              required:
+                - toolIds
+      responses:
+        '200':
+          description: Ferramentas associadas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # === USER ASSISTANT CUSTOMIZATION (Premium) ===
+
+  /users/me/assistants/{assistantId}/customization:
+    get:
+      tags:
+        - UserAssistantCustomization
+      summary: Obter todas as personalizações do usuário para um assistente
+      description: |
+        Retorna todas as personalizações (ferramentas + template) do usuário logado
+        para um assistente específico.
+
+        **Requisitos:** RN-090 (Acesso a Personalização de Assistentes)
+
+        **Apenas Premium:** Sim
+      operationId: getUserAssistantCustomization
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: assistantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID do assistente
+      responses:
+        '200':
+          description: Personalizações do usuário
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAssistantCustomizationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Usuário não é Premium ou não tem acesso ao assistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/me/assistants/{assistantId}/tool-preferences:
+    get:
+      tags:
+        - UserAssistantCustomization
+      summary: Obter preferências de ferramentas do usuário
+      description: |
+        Retorna as preferências de ferramentas do usuário logado para um assistente.
+        Inclui todas as ferramentas do assistente com o status de ativação do usuário.
+
+        **Requisitos:** RN-091 (Preferências de Ferramentas por Usuário)
+
+        **Apenas Premium:** Sim
+      operationId: getUserToolPreferences
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: assistantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID do assistente
+      responses:
+        '200':
+          description: Preferências de ferramentas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserToolPreferencesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Usuário não é Premium ou não tem acesso ao assistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - UserAssistantCustomization
+      summary: Atualizar preferências de ferramentas
+      description: |
+        Atualiza as preferências de ferramentas do usuário logado para um assistente.
+        Permite ativar/desativar ferramentas e reordenar sua exibição.
+
+        **Requisitos:** RN-091 (Preferências de Ferramentas por Usuário)
+
+        **Apenas Premium:** Sim
+      operationId: updateUserToolPreferences
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: assistantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID do assistente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserToolPreferencesRequest'
+      responses:
+        '200':
+          description: Preferências atualizadas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserToolPreferencesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Usuário não é Premium ou não tem acesso ao assistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /users/me/assistants/{assistantId}/template:
+    get:
+      tags:
+        - UserAssistantCustomization
+      summary: Obter template de saída personalizado
+      description: |
+        Retorna o template de saída personalizado do usuário para um assistente.
+        Retorna null se o usuário não tem personalização (usa template padrão).
+
+        **Requisitos:** RN-092 (Templates de Saída Personalizados)
+
+        **Apenas Premium:** Sim
+      operationId: getUserOutputTemplate
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: assistantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID do assistente
+      responses:
+        '200':
+          description: Template personalizado (ou null se usando padrão)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserOutputTemplate'
+                nullable: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Usuário não é Premium ou não tem acesso ao assistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags:
+        - UserAssistantCustomization
+      summary: Criar template de saída personalizado
+      description: |
+        Cria uma cópia personalizada do template de saída do assistente.
+        Se já existe um template personalizado, ele será substituído.
+
+        **Requisitos:** RN-092, RN-093 (Templates Personalizados)
+
+        **Apenas Premium:** Sim
+      operationId: createUserOutputTemplate
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: assistantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID do assistente
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserOutputTemplateRequest'
+      responses:
+        '201':
+          description: Template personalizado criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserOutputTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Usuário não é Premium ou não tem acesso ao assistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags:
+        - UserAssistantCustomization
+      summary: Atualizar template de saída personalizado
+      description: |
+        Atualiza o template de saída personalizado do usuário.
+        Permite editar nome, tabs e configurações de renderização.
+
+        **Requisitos:** RN-092 (Templates de Saída Personalizados)
+
+        **Apenas Premium:** Sim
+      operationId: updateUserOutputTemplate
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: assistantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID do assistente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserOutputTemplateRequest'
+      responses:
+        '200':
+          description: Template atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserOutputTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Usuário não é Premium ou não tem acesso ao assistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Template personalizado não encontrado (use POST para criar)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      tags:
+        - UserAssistantCustomization
+      summary: Restaurar template padrão
+      description: |
+        Remove o template personalizado do usuário, restaurando o template padrão do assistente.
+
+        **Requisitos:** RN-094 (Restauração de Template Padrão)
+
+        **Apenas Premium:** Sim
+      operationId: deleteUserOutputTemplate
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: assistantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID do assistente
+      responses:
+        '204':
+          description: Template personalizado removido, usando padrão
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Usuário não é Premium ou não tem acesso ao assistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Template personalizado não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+# ============================================
+# SECURITY (aplicado globalmente exceto rotas públicas)
+# ============================================
+
+security:
+  - bearerAuth: []

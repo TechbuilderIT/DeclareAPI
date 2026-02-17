@@ -1,0 +1,699 @@
+erDiagram
+
+    %% ============================================================================
+    %% VERIDIA TOOLS - Diagrama Entidade-Relacionamento
+    %% ============================================================================
+    %% Versão: 3.4
+    %% Data: 2026-01-21
+    %% Origem: er-diagram-draft.mermaid + validação com backend (.NET 8)
+    %% ============================================================================
+    %% NOTAS DE IMPLEMENTAÇÃO:
+    %% - plans: IMPLEMENTADA (nova tabela de planos)
+    %% - output_templates: IMPLEMENTADA (nova tabela de templates)
+    %% - customer_profiles.plan_id: IMPLEMENTADO (FK para plans)
+    %% - assistants.output_template_id: IMPLEMENTADO (FK para output_templates, NOT NULL - RN-070)
+    %% - workspaces.owner_id: IMPLEMENTADO (modelo de ownership)
+    %% - assistants.owner_id: IMPLEMENTADO (modelo de ownership)
+    %% - workspaces.situational_context: PLANEJADA (RN-073 - contexto situacional)
+    %% - workspace_context_presets: PLANEJADA (RF-086 - presets de contexto)
+    %% - medical_specialties: IMPLEMENTADA (tabela de lookup para especialidades normalizadas)
+    %% - customer_profiles.specialty_id: IMPLEMENTADO (FK para medical_specialties)
+    %% - assistants.specialty_id: IMPLEMENTADO (FK para medical_specialties)
+    %%
+    %% TABELAS PLANEJADAS (ainda não implementadas no backend):
+    %% - platform_admins: Verificar se será implementada (usa user_type em users)
+    %% - calculation_constants: Planejada para cálculos dinâmicos
+    %% - calculation_functions: Planejada para cálculos dinâmicos
+    %% - user_sessions: Backend usa apenas refresh_tokens
+    %% - password_reset_tokens: Verificar mecanismo de reset atual
+    %% - email_verification_tokens: Verificar mecanismo de verificação atual
+    %% - login_attempts: Para rate limiting futuro
+    %% - auth_audit_log: Usando audit_logs genérico
+    %% - migration_log: EF Core gerencia migrations
+    %% - system_updates: Para release notes futuro
+    %% - faq: Para FAQ administrativo futuro
+    %% ============================================================================
+
+    %% ============================================================================
+    %% ENTIDADES PRINCIPAIS - USUÁRIOS
+    %% ============================================================================
+
+    users {
+        uuid id PK "Identificador único"
+        varchar email UK "Email para login (RF-001)"
+        varchar first_name "Nome"
+        varchar last_name "Sobrenome"
+        varchar cpf UK "CPF (opcional)"
+        varchar password_hash "Bcrypt hash (nullable se OAuth)"
+        boolean email_verified "Email verificado"
+        varchar provider "local|google"
+        varchar provider_id "ID do provider OAuth"
+        varchar user_type "customer|admin|support|master"
+        boolean is_active "Conta ativa"
+        varchar avatar_url "URL do avatar"
+        timestamp last_login "Último login"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    customer_profiles {
+        uuid id PK
+        uuid user_id FK_UK "1:1 com users"
+        uuid plan_id FK "Plano atual (FK para plans)"
+        uuid specialty_id FK "FK para medical_specialties (normalizado)"
+        varchar crm_number "Número CRM"
+        varchar crm_state "Estado do CRM"
+        varchar specialty "Especialidade médica (deprecated)"
+        varchar clinic_name "Nome da clínica"
+        text clinic_address "Endereço"
+        varchar clinic_phone "Telefone"
+        varchar subscription_status "free|trial|premium|cancelled (RN-010)"
+        date subscription_expiry "Expiração da assinatura"
+        timestamp subscription_started_at "Início da assinatura"
+        timestamp subscription_ends_at "Fim da assinatura"
+        timestamp free_trial_ends_at "Fim do trial"
+        timestamp free_plan_expires_at "Expiração do plano free"
+        varchar stripe_customer_id "ID Stripe (RF-011)"
+        varchar stripe_subscription_id "Subscription Stripe"
+        integer ai_tools_used_today "Uso diário IA (RN-012)"
+        timestamp ai_tools_reset_at "Reset do uso diário"
+        integer transcription_minutes_used_this_month "Minutos usados no mês"
+        timestamp transcription_reset_at "Reset mensal transcrição"
+        timestamp last_ai_tool_usage "Último uso IA"
+        jsonb preferences "Preferências do usuário"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    medical_specialties {
+        uuid id PK
+        varchar key UK "Chave única (ex: pediatria)"
+        varchar name "Nome para exibição"
+        text description "Descrição opcional"
+        boolean is_active "Especialidade ativa"
+        integer display_order "Ordem de exibição"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    platform_admins {
+        uuid id PK
+        uuid user_id FK_UK "1:1 com users"
+        boolean can_manage_users "Gerenciar usuários"
+        boolean can_manage_workspaces "Gerenciar workspaces (RF-022)"
+        boolean can_manage_tools "Gerenciar ferramentas (RF-035)"
+        boolean can_export_data "Exportar dados"
+        boolean can_view_analytics "Ver analytics"
+        varchar department "Departamento"
+        text notes "Observações"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% ============================================================================
+    %% AUTENTICAÇÃO E SEGURANÇA
+    %% ============================================================================
+
+    user_sessions {
+        uuid id PK
+        uuid user_id FK
+        varchar session_token UK "Token de sessão"
+        varchar refresh_token "Token de refresh"
+        timestamp expires_at "Expiração (RNF-SEG-001)"
+        inet ip_address "IP do cliente"
+        text user_agent "User agent"
+        boolean is_active "Sessão ativa"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    refresh_tokens {
+        uuid id PK
+        uuid user_id FK
+        varchar token UK "JWT refresh token"
+        timestamp expires_at "7 dias (RNF-SEG-001)"
+        boolean revoked "Token revogado"
+        timestamp revoked_at "Quando revogado"
+        varchar replaced_by_token "Token substituto"
+        timestamp created_at
+    }
+
+    password_reset_tokens {
+        uuid id PK
+        uuid user_id FK
+        varchar token UK "Token de reset (RF-004)"
+        timestamp expires_at "1 hora"
+        boolean used "Token usado"
+        timestamp used_at "Quando usado"
+        inet ip_address "IP da solicitação"
+        timestamp created_at
+    }
+
+    email_verification_tokens {
+        uuid id PK
+        uuid user_id FK
+        varchar token UK "Token de verificação"
+        timestamp expires_at "24 horas"
+        boolean verified "Email verificado"
+        timestamp verified_at "Quando verificou"
+        timestamp created_at
+    }
+
+    login_attempts {
+        uuid id PK
+        varchar email "Email tentado"
+        inet ip_address "IP da tentativa"
+        boolean success "Sucesso/Falha"
+        timestamp attempted_at "Momento da tentativa"
+        text user_agent "User agent"
+        varchar failure_reason "Motivo da falha"
+    }
+
+    auth_audit_log {
+        uuid id PK
+        varchar user_id "ID do usuário (pode ser null)"
+        varchar action "login|logout|password_reset|etc"
+        jsonb details "Detalhes da ação"
+        inet ip_address "IP"
+        text user_agent "User agent"
+        boolean success "Sucesso/Falha"
+        timestamp created_at
+    }
+
+    %% ============================================================================
+    %% FERRAMENTAS (TOOLS) - RF-030 a RF-035
+    %% ============================================================================
+
+    tools {
+        uuid id PK
+        varchar name UK "Nome único"
+        varchar title "Título de exibição"
+        text description "Descrição"
+        varchar key "Chave de identificação"
+        varchar category "auxiliary|intelligent (RN-041)"
+        tool_role tool_role "input|output (RN-041)"
+        boolean is_enabled "Ferramenta ativa"
+        boolean is_public "Sempre true (RN-040)"
+        boolean requires_email "Permite envio email (RF-033)"
+        boolean requires_premium "Requer premium (RN-043)"
+        varchar icon "Ícone"
+        varchar instructions "Instruções de uso"
+        varchar custom_action_button "Texto botão personalizado"
+        jsonb form_config "Configuração do formulário (RF-031)"
+        uuid group_id FK "Grupo principal"
+        uuid created_by FK "Criado por (admin)"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    groups {
+        uuid id PK
+        varchar name UK "Nome do grupo"
+        text description "Descrição"
+        varchar icon "Ícone"
+        varchar color "Cor"
+        timestamp created_at
+    }
+
+    tool_groups {
+        uuid tool_id PK_FK "N:M com tools"
+        uuid group_id PK_FK "N:M com groups"
+    }
+
+    auxiliary_tools_config {
+        uuid id PK
+        uuid tool_id FK_UK "1:1 com tools"
+        varchar processing_type "calculation|form|template|custom"
+        varchar calculation_engine "Motor de cálculo"
+        boolean uses_dynamic_calculation "Usa cálculo dinâmico"
+        jsonb processing_config "Configuração de processamento"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    intelligent_tools_config {
+        uuid id PK
+        uuid tool_id FK_UK "1:1 com tools"
+        varchar ai_model "claude-sonnet|gemini-pro (RN-032)"
+        numeric ai_temperature "Temperatura (0-1)"
+        integer ai_max_tokens "Max tokens"
+        text system_prompt "Prompt de sistema"
+        text user_prompt_template "Template do prompt"
+        text_array available_variables "Variáveis disponíveis"
+        boolean is_attachment_processor "Processa anexos"
+        integer total_ai_calls "Total de chamadas"
+        timestamp last_ai_call_at "Última chamada"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    calculation_constants {
+        uuid id PK
+        uuid tool_id FK
+        varchar constant_name "Nome da constante"
+        varchar constant_type "Tipo"
+        json constant_value "Valor"
+        json conditions "Condições de uso"
+        text description "Descrição"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    calculation_functions {
+        uuid id PK
+        uuid tool_id FK
+        varchar function_name "Nome da função"
+        varchar function_type "javascript|formula|lookup_table|conditional|multi_step"
+        text function_body "Corpo da função"
+        json parameters "Parâmetros"
+        json validation_rules "Regras de validação"
+        integer version "Versão"
+        boolean is_active "Ativa"
+        varchar created_by "Criado por"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% ============================================================================
+    %% WORKSPACES - RF-020 a RF-024
+    %% ============================================================================
+
+    workspaces {
+        uuid id PK
+        varchar name "Nome do workspace"
+        varchar key UK "Chave única"
+        text description "Descrição"
+        varchar visibility "public|private (RN-021)"
+        uuid created_by FK "Criador (admin)"
+        uuid owner_id "Dono do workspace (RN-071)"
+        jsonb situational_context "Contexto situacional (RN-073)"
+        integer max_consultation_minutes "Tempo max consulta"
+        varchar environment_type "Tipo de ambiente (5 tipos)"
+        uuid context_preset_id FK "Preset de contexto"
+        boolean is_active "Ativo"
+        integer display_order "Ordem de exibição"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    workspace_tools {
+        uuid id PK
+        uuid workspace_id FK "N:M com workspaces"
+        uuid tool_id FK "N:M com tools"
+        integer display_order "Ordem de exibição"
+        boolean is_required "Obrigatória"
+        timestamp created_at
+    }
+
+    workspace_results {
+        uuid id PK
+        uuid workspace_id FK "Workspace da consulta"
+        uuid user_id FK "Usuário (RF-050)"
+        uuid assistant_id FK "Assistente usado (RF-027)"
+        integer transcription_id FK "Transcrição vinculada"
+        varchar status "pending|processing|running|completed|failed|partial"
+        text medical_notes "Notas médicas (RF-044)"
+        jsonb assistant_prompt_used "Prompt utilizado"
+        text assistant_response "Resposta do assistente"
+        varchar ai_model_used "Modelo de IA usado"
+        varchar assistant_model_used "Modelo do assistente"
+        integer assistant_tokens_used "Tokens consumidos"
+        integer assistant_processing_time_ms "Tempo de processamento"
+        text error_message "Mensagem de erro"
+        timestamp started_at "Início"
+        timestamp completed_at "Fim"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    tool_execution_results {
+        uuid id PK
+        uuid workspace_result_id FK "Resultado do workspace"
+        uuid tool_id FK "Ferramenta executada"
+        uuid user_id FK "Usuário executor"
+        varchar execution_context "workspace|standalone"
+        tool_role execution_role "input|output"
+        jsonb input_data "Dados de entrada (RF-031)"
+        jsonb output_data "Dados de saída (RF-032)"
+        varchar ai_model_used "Modelo IA (se inteligente)"
+        integer tokens_used "Tokens usados"
+        integer processing_time_ms "Tempo de processamento"
+        varchar status "pending|processing|completed|failed"
+        text error_message "Mensagem de erro"
+        timestamp executed_at
+    }
+
+    %% ============================================================================
+    %% PRESETS DE CONTEXTO SITUACIONAL - RN-073, RF-086
+    %% ============================================================================
+
+    workspace_context_presets {
+        uuid id PK
+        varchar key UK "Chave única (ex: uti-pediatrica)"
+        varchar name "Nome do preset"
+        text description "Descrição"
+        varchar environment_type "pronto-socorro|internacao|ambulatorio-sus|consultorio-particular|domiciliar"
+        jsonb context "Configuração completa do contexto"
+        varchar target_specialty "Especialidade alvo (pediatria, etc)"
+        boolean is_active "Preset ativo"
+        integer display_order "Ordem de exibição"
+        uuid created_by FK "Criador (admin)"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% ============================================================================
+    %% TEMPLATES DE SAÍDA - RF-080 a RF-083
+    %% ============================================================================
+
+    output_templates {
+        uuid id PK
+        varchar name "Nome do template"
+        varchar key UK "Chave única"
+        text description "Descrição"
+        varchar domain "Domínio (pediatria, ortopedia, etc)"
+        jsonb tabs "Configuração de abas"
+        jsonb rendering_config "Configuração de renderização"
+        boolean is_default "Template padrão do domínio"
+        uuid created_by FK "Criador (admin)"
+        boolean is_active "Ativo"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% ============================================================================
+    %% ASSISTENTES (AI) - RF-025 a RF-028
+    %% ============================================================================
+
+    assistants {
+        uuid id PK
+        varchar name "Nome do assistente"
+        varchar key "Chave única"
+        text description "Descrição"
+        varchar visibility "public|private (RN-031)"
+        varchar model "claude-sonnet|gemini-pro"
+        numeric temperature "Temperatura"
+        integer max_tokens "Max tokens"
+        text system_prompt "Prompt de sistema (RF-028)"
+        text user_prompt_template "Template do prompt"
+        jsonb prompt_config "Configuração adicional"
+        uuid output_template_id FK "Template de saída (RN-070)"
+        uuid specialty_id FK "FK para medical_specialties (normalizado)"
+        varchar avatar_url "URL do avatar"
+        varchar specialty "Especialidade médica (deprecated)"
+        uuid created_by FK "Criador (admin)"
+        uuid owner_id "Dono do assistente (RN-071)"
+        integer display_order "Ordem de exibição"
+        boolean is_active "Ativo"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    assistant_tools {
+        uuid id PK
+        uuid assistant_id FK "N:M com assistants"
+        uuid tool_id FK "N:M com tools"
+        integer display_order "Ordem"
+        timestamp created_at
+    }
+
+    workspace_assistants {
+        uuid id PK
+        uuid workspace_id FK "N:M com workspaces"
+        uuid assistant_id FK "N:M com assistants"
+        integer display_order "Ordem de exibição"
+        boolean is_default "Assistente padrão (RF-025)"
+        uuid output_template_id FK "Override template (RN-070)"
+        timestamp created_at
+    }
+
+    %% ============================================================================
+    %% TRANSCRIÇÕES MÉDICAS - RF-040 a RF-044
+    %% ============================================================================
+
+    medical_transcriptions {
+        integer id PK "SERIAL para performance"
+        varchar session_id "ID da sessão Azure Speech"
+        text full_text "Texto completo (RF-042)"
+        jsonb metadata "Chunks com timestamps"
+        varchar model "azure-speech (RN-050)"
+        varchar language "pt-BR"
+        timestamp started_at "Início gravação (RF-040)"
+        timestamp completed_at "Fim gravação"
+        integer duration_seconds "Duração em segundos"
+        numeric average_confidence "Confiança média"
+        integer total_words "Total de palavras"
+        boolean is_edited "Foi editada (RF-043)"
+        text edited_text "Texto editado"
+        uuid edited_by FK "Quem editou"
+        timestamp edited_at "Quando editou"
+        boolean anonymized "Anonimizada (RF-060)"
+        varchar original_hash "Hash SHA256 original"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% ============================================================================
+    %% ANEXOS E ARQUIVOS
+    %% ============================================================================
+
+    attachments {
+        uuid id PK
+        uuid file_id UK "ID único do arquivo"
+        varchar filename "Nome do arquivo"
+        varchar original_filename "Nome original"
+        varchar mime_type "Tipo MIME"
+        integer file_size "Tamanho em bytes"
+        varchar file_extension "Extensão"
+        text azure_blob_url "URL Azure Blob"
+        varchar azure_container_name "Container Azure"
+        varchar azure_blob_name "Nome do blob"
+        text extracted_text "Texto extraído"
+        text minified_content "Conteúdo minificado"
+        boolean is_processed "Processado"
+        uuid workspace_result_id FK "Resultado vinculado"
+        boolean is_deleted "Soft delete"
+        timestamp deleted_at "Quando deletado"
+        timestamp uploaded_at
+        timestamp updated_at
+    }
+
+    %% ============================================================================
+    %% RESULTADOS E LOGS DE AI
+    %% ============================================================================
+
+    ai_tools_results {
+        uuid id PK
+        uuid user_id FK "Usuário"
+        uuid tool_id FK "Ferramenta"
+        integer transcription_id FK "Transcrição"
+        uuid workspace_id FK "Workspace"
+        jsonb input_data "Entrada"
+        jsonb output_data "Saída"
+        varchar ai_model_used "Modelo usado"
+        integer tokens_used "Tokens (RNF-MAN-003)"
+        integer processing_time_ms "Tempo (RNF-MAN-003)"
+        text error_message "Erro"
+        timestamp created_at
+    }
+
+    ai_usage_limits {
+        uuid id PK
+        varchar subscription_type UK "free|premium (RN-012)"
+        integer daily_limit "Limite diário"
+        integer monthly_limit "Limite mensal"
+        boolean can_create_tools "Pode criar ferramentas"
+        integer max_custom_tools "Max ferramentas custom"
+        timestamp created_at
+    }
+
+    %% ============================================================================
+    %% PLANOS E BILLING - RF-010 a RF-013
+    %% ============================================================================
+
+    plans {
+        uuid id PK
+        varchar key UK "free|premium|canceled"
+        varchar name "Nome do plano"
+        text description "Descrição"
+        integer price_cents "Preço em centavos"
+        varchar billing_interval "month|year"
+        varchar stripe_price_id "ID do preço no Stripe"
+        varchar stripe_product_id "ID do produto no Stripe"
+        integer ai_daily_limit "Limite diário de IA (RN-012)"
+        integer ai_monthly_limit "Limite mensal de IA"
+        integer max_tokens_per_request "Max tokens por requisição"
+        text_array allowed_models "Modelos de IA permitidos"
+        integer transcription_monthly_minutes "Minutos de transcrição/mês"
+        integer trial_duration_days "Duração do trial em dias"
+        integer plan_duration_days "Duração do plano em dias"
+        jsonb features "Lista de features do plano"
+        boolean is_active "Plano ativo"
+        integer display_order "Ordem de exibição"
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    subscription_history {
+        uuid id PK
+        uuid user_id FK "Usuário"
+        uuid plan_id FK "Plano"
+        varchar previous_status "Status anterior"
+        varchar new_status "Novo status"
+        varchar change_reason "Motivo"
+        varchar changed_by "Quem alterou"
+        jsonb metadata "Metadados Stripe"
+        timestamp created_at
+    }
+
+    %% ============================================================================
+    %% FAVORITOS - RF-034
+    %% ============================================================================
+
+    user_favorites {
+        uuid id PK
+        uuid user_id FK "Usuário"
+        varchar entity_type "workspace|tool|assistant"
+        uuid entity_id "ID da entidade"
+        integer display_order "Ordem"
+        timestamp created_at
+    }
+
+    %% ============================================================================
+    %% AUDITORIA E LGPD - RNF-COM-003, RF-061, RF-062
+    %% ============================================================================
+
+    audit_logs {
+        uuid id PK
+        varchar entity_type "Tipo de entidade"
+        uuid entity_uuid "UUID da entidade"
+        integer entity_id "ID da entidade (se int)"
+        varchar action "create|update|delete|access"
+        uuid user_id FK "Quem executou"
+        inet ip_address "IP"
+        text user_agent "User agent"
+        jsonb old_values "Valores anteriores"
+        jsonb new_values "Novos valores"
+        jsonb metadata "Metadados"
+        boolean contains_personal_data "Contém dados pessoais"
+        date data_retention_date "Data de retenção"
+        timestamp created_at
+    }
+
+    migration_log {
+        integer id PK
+        varchar phase "Fase"
+        varchar step "Passo"
+        varchar status "Status"
+        text message "Mensagem"
+        timestamp executed_at
+    }
+
+    %% ============================================================================
+    %% SISTEMA
+    %% ============================================================================
+
+    system_updates {
+        integer id PK
+        varchar name "Nome da atualização"
+        varchar update_type "feature|hotfix"
+        timestamp release_date "Data de release"
+        text release_notes "Notas de release"
+    }
+
+    faq {
+        uuid id PK
+        varchar question "Pergunta"
+        text answer "Resposta"
+        integer order_number "Ordem"
+        boolean is_active "Ativa"
+        timestamp created_at
+    }
+
+    %% ============================================================================
+    %% RELACIONAMENTOS
+    %% ============================================================================
+
+    %% --- Users - Perfis e Administração ---
+    users ||--o| customer_profiles : "has profile"
+    users ||--o| platform_admins : "is admin"
+
+    %% --- Users - Autenticação ---
+    users ||--o{ user_sessions : "has sessions"
+    users ||--o{ refresh_tokens : "has tokens"
+    users ||--o{ password_reset_tokens : "requests reset"
+    users ||--o{ email_verification_tokens : "verifies email"
+
+    %% --- Users - Conteúdo criado ---
+    users ||--o{ workspaces : "creates"
+    users ||--o{ tools : "creates"
+    users ||--o{ assistants : "creates"
+
+    %% --- Users - Atividades ---
+    users ||--o{ workspace_results : "executes"
+    users ||--o{ tool_execution_results : "executes"
+    users ||--o{ ai_tools_results : "uses AI"
+    users ||--o{ user_favorites : "favorites"
+    users ||--o{ subscription_history : "subscription changes"
+    users ||--o{ audit_logs : "actions logged"
+
+    %% --- Tools - Configurações ---
+    tools ||--o| auxiliary_tools_config : "auxiliary config"
+    tools ||--o| intelligent_tools_config : "intelligent config"
+    tools ||--o{ calculation_constants : "has constants"
+    tools ||--o{ calculation_functions : "has functions"
+
+    %% --- Tools - Grupos (N:M) ---
+    tools ||--o{ tool_groups : "belongs to"
+    groups ||--o{ tool_groups : "contains"
+    tools }o--o| groups : "primary group"
+
+    %% --- Tools - Workspaces (N:M) ---
+    tools ||--o{ workspace_tools : "used in"
+    workspaces ||--o{ workspace_tools : "contains"
+
+    %% --- Tools - Assistants (N:M) ---
+    tools ||--o{ assistant_tools : "used by"
+    assistants ||--o{ assistant_tools : "uses"
+
+    %% --- Tools - Execuções ---
+    tools ||--o{ tool_execution_results : "executed"
+    tools ||--o{ ai_tools_results : "AI results"
+
+    %% --- Workspaces - Assistants (N:M) ---
+    workspaces ||--o{ workspace_assistants : "has"
+    assistants ||--o{ workspace_assistants : "assigned to"
+
+    %% --- Workspaces - Resultados ---
+    workspaces ||--o{ workspace_results : "has results"
+    workspaces ||--o{ ai_tools_results : "AI executions"
+
+    %% --- Workspace Results - Relacionamentos ---
+    workspace_results ||--o{ tool_execution_results : "contains"
+    workspace_results ||--o{ attachments : "has attachments"
+    workspace_results }o--o| assistants : "processed by"
+    workspace_results }o--o| medical_transcriptions : "from transcription"
+
+    %% --- Medical Transcriptions ---
+    medical_transcriptions }o--o| users : "edited by"
+    medical_transcriptions ||--o{ ai_tools_results : "processed"
+
+    %% --- Attachments ---
+    attachments }o--o| workspace_results : "attached to"
+
+    %% --- Plans - Relacionamentos ---
+    plans ||--o{ customer_profiles : "subscribed by"
+    plans ||--o{ subscription_history : "history"
+
+    %% --- Output Templates - Relacionamentos ---
+    output_templates ||--|| assistants : "required by (1:1)"
+    output_templates ||--o{ workspace_assistants : "overrides"
+    users ||--o{ output_templates : "creates"
+
+    %% --- Workspace Context Presets - Relacionamentos ---
+    workspace_context_presets ||--o{ workspaces : "used by"
+    users ||--o{ workspace_context_presets : "creates"
+
+    %% --- Medical Specialties - Relacionamentos ---
+    medical_specialties ||--o{ customer_profiles : "assigned to"
+    medical_specialties ||--o{ assistants : "designed for"

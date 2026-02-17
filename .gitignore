@@ -1,0 +1,56 @@
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider
+.idea/
+
+# NuGet Packages
+*.nupkg
+*.snupkg
+nupkg/
+packages/
+
+# Test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+TestResult.xml
+[Dd]ebugPublic/
+[Rr]elease*/
+
+# Build Server
+[Aa]rtifacts/
+PublishOutput/
+
+# User-specific files
+*.rsuser
+*.pfx
+*.publishsettings
+
+# Misc
+*.tmp
+*.temp
+*.log
+.DS_Store
+Thumbs.db
+
+# Benchmark results
+BenchmarkDotNet.Artifacts/
+Techbuilder.DeclareAPI

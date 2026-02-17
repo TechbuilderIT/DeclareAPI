@@ -1,0 +1,2418 @@
+# DeclareAPI Configuration for Veridiana
+# Generated: 2026-02-17 04:18:12 UTC
+
+version: "1.0"
+
+database:
+  provider: postgresql
+  connection: "${DB_CONNECTION}"
+
+settings:
+  base_path: teste
+  default_page_size: 25
+  max_page_size: 100
+
+entities:
+  Users:
+    endpoints:
+      list:
+        method: GET
+        path: /users
+        source:
+          type: table
+          name: users
+        filters:
+          - { field: email, operator: contains }
+          - { field: first_name, operator: contains }
+          - { field: last_name, operator: contains }
+          - { field: cpf, operator: contains }
+          - { field: email_verified, operator: equals }
+          - { field: provider_id, operator: equals }
+          - { field: user_type, operator: in }
+          - { field: is_active, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /users/{id}
+        source:
+          type: table
+          name: users
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /users
+        source:
+          type: table
+          name: users
+        fields:
+          - { name: email, type: string, required: true, pattern: email }
+          - { name: first_name, type: string }
+          - { name: last_name, type: string }
+          - { name: cpf, type: string, required: true }
+          - { name: password_hash, type: string }
+          - { name: email_verified, type: boolean, pattern: email }
+          - { name: provider, type: string }
+          - { name: provider_id, type: string }
+          - { name: user_type, type: string }
+          - { name: is_active, type: boolean }
+          - { name: avatar_url, type: string }
+          - { name: last_login, type: datetime }
+        returns: uuid
+      update:
+        method: PUT
+        path: /users/{id}
+        source:
+          type: table
+          name: users
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: email, type: string, pattern: email }
+          - { name: first_name, type: string }
+          - { name: last_name, type: string }
+          - { name: cpf, type: string }
+          - { name: password_hash, type: string }
+          - { name: email_verified, type: boolean, pattern: email }
+          - { name: provider, type: string }
+          - { name: provider_id, type: string }
+          - { name: user_type, type: string }
+          - { name: is_active, type: boolean }
+          - { name: avatar_url, type: string }
+          - { name: last_login, type: datetime }
+      delete:
+        method: DELETE
+        path: /users/{id}
+        source:
+          type: table
+          name: users
+        params:
+          - { name: id, type: uuid, from: route }
+
+  CustomerProfiles:
+    endpoints:
+      list:
+        method: GET
+        path: /customer_profiles
+        source:
+          type: table
+          name: customer_profiles
+        filters:
+          - { field: user_id, operator: equals }
+          - { field: plan_id, operator: equals }
+          - { field: specialty_id, operator: equals }
+          - { field: clinic_name, operator: contains }
+          - { field: subscription_status, operator: in }
+          - { field: stripe_customer_id, operator: equals }
+          - { field: stripe_subscription_id, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /customer_profiles/{id}
+        source:
+          type: table
+          name: customer_profiles
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /customer_profiles
+        source:
+          type: table
+          name: customer_profiles
+        fields:
+          - { name: user_id, type: uuid, required: true }
+          - { name: plan_id, type: uuid }
+          - { name: specialty_id, type: uuid }
+          - { name: crm_number, type: string }
+          - { name: crm_state, type: string }
+          - { name: specialty, type: string }
+          - { name: clinic_name, type: string }
+          - { name: clinic_address, type: string }
+          - { name: clinic_phone, type: string }
+          - { name: subscription_status, type: string }
+          - { name: subscription_expiry, type: date }
+          - { name: subscription_started_at, type: datetime }
+          - { name: subscription_ends_at, type: datetime }
+          - { name: free_trial_ends_at, type: datetime }
+          - { name: free_plan_expires_at, type: datetime }
+          - { name: stripe_customer_id, type: string }
+          - { name: stripe_subscription_id, type: string }
+          - { name: ai_tools_used_today, type: integer }
+          - { name: ai_tools_reset_at, type: datetime }
+          - { name: transcription_minutes_used_this_month, type: integer }
+          - { name: transcription_reset_at, type: datetime }
+          - { name: last_ai_tool_usage, type: datetime }
+          - { name: preferences, type: object }
+        returns: uuid
+      update:
+        method: PUT
+        path: /customer_profiles/{id}
+        source:
+          type: table
+          name: customer_profiles
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: user_id, type: uuid }
+          - { name: plan_id, type: uuid }
+          - { name: specialty_id, type: uuid }
+          - { name: crm_number, type: string }
+          - { name: crm_state, type: string }
+          - { name: specialty, type: string }
+          - { name: clinic_name, type: string }
+          - { name: clinic_address, type: string }
+          - { name: clinic_phone, type: string }
+          - { name: subscription_status, type: string }
+          - { name: subscription_expiry, type: date }
+          - { name: subscription_started_at, type: datetime }
+          - { name: subscription_ends_at, type: datetime }
+          - { name: free_trial_ends_at, type: datetime }
+          - { name: free_plan_expires_at, type: datetime }
+          - { name: stripe_customer_id, type: string }
+          - { name: stripe_subscription_id, type: string }
+          - { name: ai_tools_used_today, type: integer }
+          - { name: ai_tools_reset_at, type: datetime }
+          - { name: transcription_minutes_used_this_month, type: integer }
+          - { name: transcription_reset_at, type: datetime }
+          - { name: last_ai_tool_usage, type: datetime }
+          - { name: preferences, type: object }
+      delete:
+        method: DELETE
+        path: /customer_profiles/{id}
+        source:
+          type: table
+          name: customer_profiles
+        params:
+          - { name: id, type: uuid, from: route }
+
+  MedicalSpecialties:
+    endpoints:
+      list:
+        method: GET
+        path: /medical_specialties
+        source:
+          type: table
+          name: medical_specialties
+        filters:
+          - { field: key, operator: contains }
+          - { field: name, operator: contains }
+          - { field: is_active, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /medical_specialties/{id}
+        source:
+          type: table
+          name: medical_specialties
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /medical_specialties
+        source:
+          type: table
+          name: medical_specialties
+        fields:
+          - { name: key, type: string, required: true }
+          - { name: name, type: string }
+          - { name: description, type: string }
+          - { name: is_active, type: boolean }
+          - { name: display_order, type: integer }
+        returns: uuid
+      update:
+        method: PUT
+        path: /medical_specialties/{id}
+        source:
+          type: table
+          name: medical_specialties
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: key, type: string }
+          - { name: name, type: string }
+          - { name: description, type: string }
+          - { name: is_active, type: boolean }
+          - { name: display_order, type: integer }
+      delete:
+        method: DELETE
+        path: /medical_specialties/{id}
+        source:
+          type: table
+          name: medical_specialties
+        params:
+          - { name: id, type: uuid, from: route }
+
+  PlatformAdmins:
+    endpoints:
+      list:
+        method: GET
+        path: /platform_admins
+        source:
+          type: table
+          name: platform_admins
+        filters:
+          - { field: user_id, operator: equals }
+          - { field: can_manage_users, operator: equals }
+          - { field: can_manage_workspaces, operator: equals }
+          - { field: can_manage_tools, operator: equals }
+          - { field: can_export_data, operator: equals }
+          - { field: can_view_analytics, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /platform_admins/{id}
+        source:
+          type: table
+          name: platform_admins
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /platform_admins
+        source:
+          type: table
+          name: platform_admins
+        fields:
+          - { name: user_id, type: uuid, required: true }
+          - { name: can_manage_users, type: boolean }
+          - { name: can_manage_workspaces, type: boolean }
+          - { name: can_manage_tools, type: boolean }
+          - { name: can_export_data, type: boolean }
+          - { name: can_view_analytics, type: boolean }
+          - { name: department, type: string }
+          - { name: notes, type: string }
+        returns: uuid
+      update:
+        method: PUT
+        path: /platform_admins/{id}
+        source:
+          type: table
+          name: platform_admins
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: user_id, type: uuid }
+          - { name: can_manage_users, type: boolean }
+          - { name: can_manage_workspaces, type: boolean }
+          - { name: can_manage_tools, type: boolean }
+          - { name: can_export_data, type: boolean }
+          - { name: can_view_analytics, type: boolean }
+          - { name: department, type: string }
+          - { name: notes, type: string }
+      delete:
+        method: DELETE
+        path: /platform_admins/{id}
+        source:
+          type: table
+          name: platform_admins
+        params:
+          - { name: id, type: uuid, from: route }
+
+  UserSessions:
+    endpoints:
+      list:
+        method: GET
+        path: /user_sessions
+        source:
+          type: table
+          name: user_sessions
+        filters:
+          - { field: user_id, operator: equals }
+          - { field: is_active, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /user_sessions/{id}
+        source:
+          type: table
+          name: user_sessions
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /user_sessions
+        source:
+          type: table
+          name: user_sessions
+        fields:
+          - { name: user_id, type: uuid }
+          - { name: session_token, type: string, required: true }
+          - { name: refresh_token, type: string }
+          - { name: expires_at, type: datetime }
+          - { name: ip_address, type: string }
+          - { name: user_agent, type: string }
+          - { name: is_active, type: boolean }
+        returns: uuid
+      update:
+        method: PUT
+        path: /user_sessions/{id}
+        source:
+          type: table
+          name: user_sessions
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: user_id, type: uuid }
+          - { name: session_token, type: string }
+          - { name: refresh_token, type: string }
+          - { name: expires_at, type: datetime }
+          - { name: ip_address, type: string }
+          - { name: user_agent, type: string }
+          - { name: is_active, type: boolean }
+      delete:
+        method: DELETE
+        path: /user_sessions/{id}
+        source:
+          type: table
+          name: user_sessions
+        params:
+          - { name: id, type: uuid, from: route }
+
+  RefreshTokens:
+    endpoints:
+      list:
+        method: GET
+        path: /refresh_tokens
+        source:
+          type: table
+          name: refresh_tokens
+        filters:
+          - { field: user_id, operator: equals }
+          - { field: revoked, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /refresh_tokens/{id}
+        source:
+          type: table
+          name: refresh_tokens
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /refresh_tokens
+        source:
+          type: table
+          name: refresh_tokens
+        fields:
+          - { name: user_id, type: uuid }
+          - { name: token, type: string, required: true }
+          - { name: expires_at, type: datetime }
+          - { name: revoked, type: boolean }
+          - { name: revoked_at, type: datetime }
+          - { name: replaced_by_token, type: string }
+        returns: uuid
+      update:
+        method: PUT
+        path: /refresh_tokens/{id}
+        source:
+          type: table
+          name: refresh_tokens
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: user_id, type: uuid }
+          - { name: token, type: string }
+          - { name: expires_at, type: datetime }
+          - { name: revoked, type: boolean }
+          - { name: revoked_at, type: datetime }
+          - { name: replaced_by_token, type: string }
+      delete:
+        method: DELETE
+        path: /refresh_tokens/{id}
+        source:
+          type: table
+          name: refresh_tokens
+        params:
+          - { name: id, type: uuid, from: route }
+
+  PasswordResetTokens:
+    endpoints:
+      list:
+        method: GET
+        path: /password_reset_tokens
+        source:
+          type: table
+          name: password_reset_tokens
+        filters:
+          - { field: user_id, operator: equals }
+          - { field: used, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /password_reset_tokens/{id}
+        source:
+          type: table
+          name: password_reset_tokens
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /password_reset_tokens
+        source:
+          type: table
+          name: password_reset_tokens
+        fields:
+          - { name: user_id, type: uuid }
+          - { name: token, type: string, required: true }
+          - { name: expires_at, type: datetime }
+          - { name: used, type: boolean }
+          - { name: used_at, type: datetime }
+          - { name: ip_address, type: string }
+        returns: uuid
+      update:
+        method: PUT
+        path: /password_reset_tokens/{id}
+        source:
+          type: table
+          name: password_reset_tokens
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: user_id, type: uuid }
+          - { name: token, type: string }
+          - { name: expires_at, type: datetime }
+          - { name: used, type: boolean }
+          - { name: used_at, type: datetime }
+          - { name: ip_address, type: string }
+      delete:
+        method: DELETE
+        path: /password_reset_tokens/{id}
+        source:
+          type: table
+          name: password_reset_tokens
+        params:
+          - { name: id, type: uuid, from: route }
+
+  EmailVerificationTokens:
+    endpoints:
+      list:
+        method: GET
+        path: /email_verification_tokens
+        source:
+          type: table
+          name: email_verification_tokens
+        filters:
+          - { field: user_id, operator: equals }
+          - { field: verified, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /email_verification_tokens/{id}
+        source:
+          type: table
+          name: email_verification_tokens
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /email_verification_tokens
+        source:
+          type: table
+          name: email_verification_tokens
+        fields:
+          - { name: user_id, type: uuid }
+          - { name: token, type: string, required: true }
+          - { name: expires_at, type: datetime }
+          - { name: verified, type: boolean }
+          - { name: verified_at, type: datetime }
+        returns: uuid
+      update:
+        method: PUT
+        path: /email_verification_tokens/{id}
+        source:
+          type: table
+          name: email_verification_tokens
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: user_id, type: uuid }
+          - { name: token, type: string }
+          - { name: expires_at, type: datetime }
+          - { name: verified, type: boolean }
+          - { name: verified_at, type: datetime }
+      delete:
+        method: DELETE
+        path: /email_verification_tokens/{id}
+        source:
+          type: table
+          name: email_verification_tokens
+        params:
+          - { name: id, type: uuid, from: route }
+
+  LoginAttempts:
+    endpoints:
+      list:
+        method: GET
+        path: /login_attempts
+        source:
+          type: table
+          name: login_attempts
+        filters:
+          - { field: email, operator: contains }
+          - { field: success, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /login_attempts/{id}
+        source:
+          type: table
+          name: login_attempts
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /login_attempts
+        source:
+          type: table
+          name: login_attempts
+        fields:
+          - { name: email, type: string, pattern: email }
+          - { name: ip_address, type: string }
+          - { name: success, type: boolean }
+          - { name: attempted_at, type: datetime }
+          - { name: user_agent, type: string }
+          - { name: failure_reason, type: string }
+        returns: uuid
+      update:
+        method: PUT
+        path: /login_attempts/{id}
+        source:
+          type: table
+          name: login_attempts
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: email, type: string, pattern: email }
+          - { name: ip_address, type: string }
+          - { name: success, type: boolean }
+          - { name: attempted_at, type: datetime }
+          - { name: user_agent, type: string }
+          - { name: failure_reason, type: string }
+      delete:
+        method: DELETE
+        path: /login_attempts/{id}
+        source:
+          type: table
+          name: login_attempts
+        params:
+          - { name: id, type: uuid, from: route }
+
+  AuthAuditLog:
+    endpoints:
+      list:
+        method: GET
+        path: /auth_audit_log
+        source:
+          type: table
+          name: auth_audit_log
+        filters:
+          - { field: user_id, operator: equals }
+          - { field: success, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /auth_audit_log/{id}
+        source:
+          type: table
+          name: auth_audit_log
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /auth_audit_log
+        source:
+          type: table
+          name: auth_audit_log
+        fields:
+          - { name: user_id, type: string }
+          - { name: action, type: string }
+          - { name: details, type: object }
+          - { name: ip_address, type: string }
+          - { name: user_agent, type: string }
+          - { name: success, type: boolean }
+        returns: uuid
+      update:
+        method: PUT
+        path: /auth_audit_log/{id}
+        source:
+          type: table
+          name: auth_audit_log
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: user_id, type: string }
+          - { name: action, type: string }
+          - { name: details, type: object }
+          - { name: ip_address, type: string }
+          - { name: user_agent, type: string }
+          - { name: success, type: boolean }
+      delete:
+        method: DELETE
+        path: /auth_audit_log/{id}
+        source:
+          type: table
+          name: auth_audit_log
+        params:
+          - { name: id, type: uuid, from: route }
+
+  Tools:
+    endpoints:
+      list:
+        method: GET
+        path: /tools
+        source:
+          type: table
+          name: tools
+        filters:
+          - { field: name, operator: contains }
+          - { field: is_enabled, operator: equals }
+          - { field: is_public, operator: equals }
+          - { field: requires_email, operator: equals }
+          - { field: requires_premium, operator: equals }
+          - { field: group_id, operator: equals }
+          - { field: created_by, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /tools/{id}
+        source:
+          type: table
+          name: tools
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /tools
+        source:
+          type: table
+          name: tools
+        fields:
+          - { name: name, type: string, required: true }
+          - { name: title, type: string }
+          - { name: description, type: string }
+          - { name: key, type: string }
+          - { name: category, type: string }
+          - { name: tool_role, type: string }
+          - { name: is_enabled, type: boolean }
+          - { name: is_public, type: boolean }
+          - { name: requires_email, type: boolean, pattern: email }
+          - { name: requires_premium, type: boolean }
+          - { name: icon, type: string }
+          - { name: instructions, type: string }
+          - { name: custom_action_button, type: string }
+          - { name: form_config, type: object }
+          - { name: group_id, type: uuid }
+          - { name: created_by, type: uuid }
+        returns: uuid
+      update:
+        method: PUT
+        path: /tools/{id}
+        source:
+          type: table
+          name: tools
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: name, type: string }
+          - { name: title, type: string }
+          - { name: description, type: string }
+          - { name: key, type: string }
+          - { name: category, type: string }
+          - { name: tool_role, type: string }
+          - { name: is_enabled, type: boolean }
+          - { name: is_public, type: boolean }
+          - { name: requires_email, type: boolean, pattern: email }
+          - { name: requires_premium, type: boolean }
+          - { name: icon, type: string }
+          - { name: instructions, type: string }
+          - { name: custom_action_button, type: string }
+          - { name: form_config, type: object }
+          - { name: group_id, type: uuid }
+          - { name: created_by, type: uuid }
+      delete:
+        method: DELETE
+        path: /tools/{id}
+        source:
+          type: table
+          name: tools
+        params:
+          - { name: id, type: uuid, from: route }
+
+  Groups:
+    endpoints:
+      list:
+        method: GET
+        path: /groups
+        source:
+          type: table
+          name: groups
+        filters:
+          - { field: name, operator: contains }
+        paginated: true
+      get:
+        method: GET
+        path: /groups/{id}
+        source:
+          type: table
+          name: groups
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /groups
+        source:
+          type: table
+          name: groups
+        fields:
+          - { name: name, type: string, required: true }
+          - { name: description, type: string }
+          - { name: icon, type: string }
+          - { name: color, type: string }
+        returns: uuid
+      update:
+        method: PUT
+        path: /groups/{id}
+        source:
+          type: table
+          name: groups
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: name, type: string }
+          - { name: description, type: string }
+          - { name: icon, type: string }
+          - { name: color, type: string }
+      delete:
+        method: DELETE
+        path: /groups/{id}
+        source:
+          type: table
+          name: groups
+        params:
+          - { name: id, type: uuid, from: route }
+
+  ToolGroups:
+    endpoints:
+      list:
+        method: GET
+        path: /tool_groups
+        source:
+          type: table
+          name: tool_groups
+        paginated: true
+      get:
+        method: GET
+        path: /tool_groups/{id}
+        source:
+          type: table
+          name: tool_groups
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /tool_groups
+        source:
+          type: table
+          name: tool_groups
+        returns: uuid
+      update:
+        method: PUT
+        path: /tool_groups/{id}
+        source:
+          type: table
+          name: tool_groups
+        params:
+          - { name: id, type: uuid, from: route }
+      delete:
+        method: DELETE
+        path: /tool_groups/{id}
+        source:
+          type: table
+          name: tool_groups
+        params:
+          - { name: id, type: uuid, from: route }
+
+  AuxiliaryToolsConfig:
+    endpoints:
+      list:
+        method: GET
+        path: /auxiliary_tools_config
+        source:
+          type: table
+          name: auxiliary_tools_config
+        filters:
+          - { field: tool_id, operator: equals }
+          - { field: processing_type, operator: in }
+          - { field: uses_dynamic_calculation, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /auxiliary_tools_config/{id}
+        source:
+          type: table
+          name: auxiliary_tools_config
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /auxiliary_tools_config
+        source:
+          type: table
+          name: auxiliary_tools_config
+        fields:
+          - { name: tool_id, type: uuid, required: true }
+          - { name: processing_type, type: string }
+          - { name: calculation_engine, type: string }
+          - { name: uses_dynamic_calculation, type: boolean }
+          - { name: processing_config, type: object }
+        returns: uuid
+      update:
+        method: PUT
+        path: /auxiliary_tools_config/{id}
+        source:
+          type: table
+          name: auxiliary_tools_config
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: tool_id, type: uuid }
+          - { name: processing_type, type: string }
+          - { name: calculation_engine, type: string }
+          - { name: uses_dynamic_calculation, type: boolean }
+          - { name: processing_config, type: object }
+      delete:
+        method: DELETE
+        path: /auxiliary_tools_config/{id}
+        source:
+          type: table
+          name: auxiliary_tools_config
+        params:
+          - { name: id, type: uuid, from: route }
+
+  IntelligentToolsConfig:
+    endpoints:
+      list:
+        method: GET
+        path: /intelligent_tools_config
+        source:
+          type: table
+          name: intelligent_tools_config
+        filters:
+          - { field: tool_id, operator: equals }
+          - { field: is_attachment_processor, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /intelligent_tools_config/{id}
+        source:
+          type: table
+          name: intelligent_tools_config
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /intelligent_tools_config
+        source:
+          type: table
+          name: intelligent_tools_config
+        fields:
+          - { name: tool_id, type: uuid, required: true }
+          - { name: ai_model, type: string }
+          - { name: ai_temperature, type: decimal }
+          - { name: ai_max_tokens, type: integer }
+          - { name: system_prompt, type: string }
+          - { name: user_prompt_template, type: string }
+          - { name: available_variables, type: string }
+          - { name: is_attachment_processor, type: boolean }
+          - { name: total_ai_calls, type: integer }
+          - { name: last_ai_call_at, type: datetime }
+        returns: uuid
+      update:
+        method: PUT
+        path: /intelligent_tools_config/{id}
+        source:
+          type: table
+          name: intelligent_tools_config
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: tool_id, type: uuid }
+          - { name: ai_model, type: string }
+          - { name: ai_temperature, type: decimal }
+          - { name: ai_max_tokens, type: integer }
+          - { name: system_prompt, type: string }
+          - { name: user_prompt_template, type: string }
+          - { name: available_variables, type: string }
+          - { name: is_attachment_processor, type: boolean }
+          - { name: total_ai_calls, type: integer }
+          - { name: last_ai_call_at, type: datetime }
+      delete:
+        method: DELETE
+        path: /intelligent_tools_config/{id}
+        source:
+          type: table
+          name: intelligent_tools_config
+        params:
+          - { name: id, type: uuid, from: route }
+
+  CalculationConstants:
+    endpoints:
+      list:
+        method: GET
+        path: /calculation_constants
+        source:
+          type: table
+          name: calculation_constants
+        filters:
+          - { field: tool_id, operator: equals }
+          - { field: constant_name, operator: contains }
+          - { field: constant_type, operator: in }
+        paginated: true
+      get:
+        method: GET
+        path: /calculation_constants/{id}
+        source:
+          type: table
+          name: calculation_constants
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /calculation_constants
+        source:
+          type: table
+          name: calculation_constants
+        fields:
+          - { name: tool_id, type: uuid }
+          - { name: constant_name, type: string }
+          - { name: constant_type, type: string }
+          - { name: constant_value, type: object }
+          - { name: conditions, type: object }
+          - { name: description, type: string }
+        returns: uuid
+      update:
+        method: PUT
+        path: /calculation_constants/{id}
+        source:
+          type: table
+          name: calculation_constants
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: tool_id, type: uuid }
+          - { name: constant_name, type: string }
+          - { name: constant_type, type: string }
+          - { name: constant_value, type: object }
+          - { name: conditions, type: object }
+          - { name: description, type: string }
+      delete:
+        method: DELETE
+        path: /calculation_constants/{id}
+        source:
+          type: table
+          name: calculation_constants
+        params:
+          - { name: id, type: uuid, from: route }
+
+  CalculationFunctions:
+    endpoints:
+      list:
+        method: GET
+        path: /calculation_functions
+        source:
+          type: table
+          name: calculation_functions
+        filters:
+          - { field: tool_id, operator: equals }
+          - { field: function_name, operator: contains }
+          - { field: function_type, operator: in }
+          - { field: is_active, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /calculation_functions/{id}
+        source:
+          type: table
+          name: calculation_functions
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /calculation_functions
+        source:
+          type: table
+          name: calculation_functions
+        fields:
+          - { name: tool_id, type: uuid }
+          - { name: function_name, type: string }
+          - { name: function_type, type: string }
+          - { name: function_body, type: string }
+          - { name: parameters, type: object }
+          - { name: validation_rules, type: object }
+          - { name: version, type: integer }
+          - { name: is_active, type: boolean }
+          - { name: created_by, type: string }
+        returns: uuid
+      update:
+        method: PUT
+        path: /calculation_functions/{id}
+        source:
+          type: table
+          name: calculation_functions
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: tool_id, type: uuid }
+          - { name: function_name, type: string }
+          - { name: function_type, type: string }
+          - { name: function_body, type: string }
+          - { name: parameters, type: object }
+          - { name: validation_rules, type: object }
+          - { name: version, type: integer }
+          - { name: is_active, type: boolean }
+          - { name: created_by, type: string }
+      delete:
+        method: DELETE
+        path: /calculation_functions/{id}
+        source:
+          type: table
+          name: calculation_functions
+        params:
+          - { name: id, type: uuid, from: route }
+
+  Workspaces:
+    endpoints:
+      list:
+        method: GET
+        path: /workspaces
+        source:
+          type: table
+          name: workspaces
+        filters:
+          - { field: name, operator: contains }
+          - { field: key, operator: contains }
+          - { field: created_by, operator: equals }
+          - { field: owner_id, operator: equals }
+          - { field: environment_type, operator: in }
+          - { field: context_preset_id, operator: equals }
+          - { field: is_active, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /workspaces/{id}
+        source:
+          type: table
+          name: workspaces
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /workspaces
+        source:
+          type: table
+          name: workspaces
+        fields:
+          - { name: name, type: string }
+          - { name: key, type: string, required: true }
+          - { name: description, type: string }
+          - { name: visibility, type: string }
+          - { name: created_by, type: uuid }
+          - { name: owner_id, type: uuid }
+          - { name: situational_context, type: object }
+          - { name: max_consultation_minutes, type: integer }
+          - { name: environment_type, type: string }
+          - { name: context_preset_id, type: uuid }
+          - { name: is_active, type: boolean }
+          - { name: display_order, type: integer }
+        returns: uuid
+      update:
+        method: PUT
+        path: /workspaces/{id}
+        source:
+          type: table
+          name: workspaces
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: name, type: string }
+          - { name: key, type: string }
+          - { name: description, type: string }
+          - { name: visibility, type: string }
+          - { name: created_by, type: uuid }
+          - { name: owner_id, type: uuid }
+          - { name: situational_context, type: object }
+          - { name: max_consultation_minutes, type: integer }
+          - { name: environment_type, type: string }
+          - { name: context_preset_id, type: uuid }
+          - { name: is_active, type: boolean }
+          - { name: display_order, type: integer }
+      delete:
+        method: DELETE
+        path: /workspaces/{id}
+        source:
+          type: table
+          name: workspaces
+        params:
+          - { name: id, type: uuid, from: route }
+
+  WorkspaceTools:
+    endpoints:
+      list:
+        method: GET
+        path: /workspace_tools
+        source:
+          type: table
+          name: workspace_tools
+        filters:
+          - { field: workspace_id, operator: equals }
+          - { field: tool_id, operator: equals }
+          - { field: is_required, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /workspace_tools/{id}
+        source:
+          type: table
+          name: workspace_tools
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /workspace_tools
+        source:
+          type: table
+          name: workspace_tools
+        fields:
+          - { name: workspace_id, type: uuid }
+          - { name: tool_id, type: uuid }
+          - { name: display_order, type: integer }
+          - { name: is_required, type: boolean }
+        returns: uuid
+      update:
+        method: PUT
+        path: /workspace_tools/{id}
+        source:
+          type: table
+          name: workspace_tools
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: workspace_id, type: uuid }
+          - { name: tool_id, type: uuid }
+          - { name: display_order, type: integer }
+          - { name: is_required, type: boolean }
+      delete:
+        method: DELETE
+        path: /workspace_tools/{id}
+        source:
+          type: table
+          name: workspace_tools
+        params:
+          - { name: id, type: uuid, from: route }
+
+  WorkspaceResults:
+    endpoints:
+      list:
+        method: GET
+        path: /workspace_results
+        source:
+          type: table
+          name: workspace_results
+        filters:
+          - { field: workspace_id, operator: equals }
+          - { field: user_id, operator: equals }
+          - { field: assistant_id, operator: equals }
+          - { field: transcription_id, operator: equals }
+          - { field: status, operator: in }
+        paginated: true
+      get:
+        method: GET
+        path: /workspace_results/{id}
+        source:
+          type: table
+          name: workspace_results
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /workspace_results
+        source:
+          type: table
+          name: workspace_results
+        fields:
+          - { name: workspace_id, type: uuid }
+          - { name: user_id, type: uuid }
+          - { name: assistant_id, type: uuid }
+          - { name: transcription_id, type: integer }
+          - { name: status, type: string }
+          - { name: medical_notes, type: string }
+          - { name: assistant_prompt_used, type: object }
+          - { name: assistant_response, type: string }
+          - { name: ai_model_used, type: string }
+          - { name: assistant_model_used, type: string }
+          - { name: assistant_tokens_used, type: integer }
+          - { name: assistant_processing_time_ms, type: integer }
+          - { name: error_message, type: string }
+          - { name: started_at, type: datetime }
+          - { name: completed_at, type: datetime }
+        returns: uuid
+      update:
+        method: PUT
+        path: /workspace_results/{id}
+        source:
+          type: table
+          name: workspace_results
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: workspace_id, type: uuid }
+          - { name: user_id, type: uuid }
+          - { name: assistant_id, type: uuid }
+          - { name: transcription_id, type: integer }
+          - { name: status, type: string }
+          - { name: medical_notes, type: string }
+          - { name: assistant_prompt_used, type: object }
+          - { name: assistant_response, type: string }
+          - { name: ai_model_used, type: string }
+          - { name: assistant_model_used, type: string }
+          - { name: assistant_tokens_used, type: integer }
+          - { name: assistant_processing_time_ms, type: integer }
+          - { name: error_message, type: string }
+          - { name: started_at, type: datetime }
+          - { name: completed_at, type: datetime }
+      delete:
+        method: DELETE
+        path: /workspace_results/{id}
+        source:
+          type: table
+          name: workspace_results
+        params:
+          - { name: id, type: uuid, from: route }
+
+  ToolExecutionResults:
+    endpoints:
+      list:
+        method: GET
+        path: /tool_execution_results
+        source:
+          type: table
+          name: tool_execution_results
+        filters:
+          - { field: workspace_result_id, operator: equals }
+          - { field: tool_id, operator: equals }
+          - { field: user_id, operator: equals }
+          - { field: status, operator: in }
+        paginated: true
+      get:
+        method: GET
+        path: /tool_execution_results/{id}
+        source:
+          type: table
+          name: tool_execution_results
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /tool_execution_results
+        source:
+          type: table
+          name: tool_execution_results
+        fields:
+          - { name: workspace_result_id, type: uuid }
+          - { name: tool_id, type: uuid }
+          - { name: user_id, type: uuid }
+          - { name: execution_context, type: string }
+          - { name: execution_role, type: string }
+          - { name: input_data, type: object }
+          - { name: output_data, type: object }
+          - { name: ai_model_used, type: string }
+          - { name: tokens_used, type: integer }
+          - { name: processing_time_ms, type: integer }
+          - { name: status, type: string }
+          - { name: error_message, type: string }
+          - { name: executed_at, type: datetime }
+        returns: uuid
+      update:
+        method: PUT
+        path: /tool_execution_results/{id}
+        source:
+          type: table
+          name: tool_execution_results
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: workspace_result_id, type: uuid }
+          - { name: tool_id, type: uuid }
+          - { name: user_id, type: uuid }
+          - { name: execution_context, type: string }
+          - { name: execution_role, type: string }
+          - { name: input_data, type: object }
+          - { name: output_data, type: object }
+          - { name: ai_model_used, type: string }
+          - { name: tokens_used, type: integer }
+          - { name: processing_time_ms, type: integer }
+          - { name: status, type: string }
+          - { name: error_message, type: string }
+          - { name: executed_at, type: datetime }
+      delete:
+        method: DELETE
+        path: /tool_execution_results/{id}
+        source:
+          type: table
+          name: tool_execution_results
+        params:
+          - { name: id, type: uuid, from: route }
+
+  WorkspaceContextPresets:
+    endpoints:
+      list:
+        method: GET
+        path: /workspace_context_presets
+        source:
+          type: table
+          name: workspace_context_presets
+        filters:
+          - { field: key, operator: contains }
+          - { field: name, operator: contains }
+          - { field: environment_type, operator: in }
+          - { field: is_active, operator: equals }
+          - { field: created_by, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /workspace_context_presets/{id}
+        source:
+          type: table
+          name: workspace_context_presets
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /workspace_context_presets
+        source:
+          type: table
+          name: workspace_context_presets
+        fields:
+          - { name: key, type: string, required: true }
+          - { name: name, type: string }
+          - { name: description, type: string }
+          - { name: environment_type, type: string }
+          - { name: context, type: object }
+          - { name: target_specialty, type: string }
+          - { name: is_active, type: boolean }
+          - { name: display_order, type: integer }
+          - { name: created_by, type: uuid }
+        returns: uuid
+      update:
+        method: PUT
+        path: /workspace_context_presets/{id}
+        source:
+          type: table
+          name: workspace_context_presets
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: key, type: string }
+          - { name: name, type: string }
+          - { name: description, type: string }
+          - { name: environment_type, type: string }
+          - { name: context, type: object }
+          - { name: target_specialty, type: string }
+          - { name: is_active, type: boolean }
+          - { name: display_order, type: integer }
+          - { name: created_by, type: uuid }
+      delete:
+        method: DELETE
+        path: /workspace_context_presets/{id}
+        source:
+          type: table
+          name: workspace_context_presets
+        params:
+          - { name: id, type: uuid, from: route }
+
+  OutputTemplates:
+    endpoints:
+      list:
+        method: GET
+        path: /output_templates
+        source:
+          type: table
+          name: output_templates
+        filters:
+          - { field: name, operator: contains }
+          - { field: key, operator: contains }
+          - { field: is_default, operator: equals }
+          - { field: created_by, operator: equals }
+          - { field: is_active, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /output_templates/{id}
+        source:
+          type: table
+          name: output_templates
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /output_templates
+        source:
+          type: table
+          name: output_templates
+        fields:
+          - { name: name, type: string }
+          - { name: key, type: string, required: true }
+          - { name: description, type: string }
+          - { name: domain, type: string }
+          - { name: tabs, type: object }
+          - { name: rendering_config, type: object }
+          - { name: is_default, type: boolean }
+          - { name: created_by, type: uuid }
+          - { name: is_active, type: boolean }
+        returns: uuid
+      update:
+        method: PUT
+        path: /output_templates/{id}
+        source:
+          type: table
+          name: output_templates
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: name, type: string }
+          - { name: key, type: string }
+          - { name: description, type: string }
+          - { name: domain, type: string }
+          - { name: tabs, type: object }
+          - { name: rendering_config, type: object }
+          - { name: is_default, type: boolean }
+          - { name: created_by, type: uuid }
+          - { name: is_active, type: boolean }
+      delete:
+        method: DELETE
+        path: /output_templates/{id}
+        source:
+          type: table
+          name: output_templates
+        params:
+          - { name: id, type: uuid, from: route }
+
+  Assistants:
+    endpoints:
+      list:
+        method: GET
+        path: /assistants
+        source:
+          type: table
+          name: assistants
+        filters:
+          - { field: name, operator: contains }
+          - { field: output_template_id, operator: equals }
+          - { field: specialty_id, operator: equals }
+          - { field: created_by, operator: equals }
+          - { field: owner_id, operator: equals }
+          - { field: is_active, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /assistants/{id}
+        source:
+          type: table
+          name: assistants
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /assistants
+        source:
+          type: table
+          name: assistants
+        fields:
+          - { name: name, type: string }
+          - { name: key, type: string }
+          - { name: description, type: string }
+          - { name: visibility, type: string }
+          - { name: model, type: string }
+          - { name: temperature, type: decimal }
+          - { name: max_tokens, type: integer }
+          - { name: system_prompt, type: string }
+          - { name: user_prompt_template, type: string }
+          - { name: prompt_config, type: object }
+          - { name: output_template_id, type: uuid }
+          - { name: specialty_id, type: uuid }
+          - { name: avatar_url, type: string }
+          - { name: specialty, type: string }
+          - { name: created_by, type: uuid }
+          - { name: owner_id, type: uuid }
+          - { name: display_order, type: integer }
+          - { name: is_active, type: boolean }
+        returns: uuid
+      update:
+        method: PUT
+        path: /assistants/{id}
+        source:
+          type: table
+          name: assistants
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: name, type: string }
+          - { name: key, type: string }
+          - { name: description, type: string }
+          - { name: visibility, type: string }
+          - { name: model, type: string }
+          - { name: temperature, type: decimal }
+          - { name: max_tokens, type: integer }
+          - { name: system_prompt, type: string }
+          - { name: user_prompt_template, type: string }
+          - { name: prompt_config, type: object }
+          - { name: output_template_id, type: uuid }
+          - { name: specialty_id, type: uuid }
+          - { name: avatar_url, type: string }
+          - { name: specialty, type: string }
+          - { name: created_by, type: uuid }
+          - { name: owner_id, type: uuid }
+          - { name: display_order, type: integer }
+          - { name: is_active, type: boolean }
+      delete:
+        method: DELETE
+        path: /assistants/{id}
+        source:
+          type: table
+          name: assistants
+        params:
+          - { name: id, type: uuid, from: route }
+
+  AssistantTools:
+    endpoints:
+      list:
+        method: GET
+        path: /assistant_tools
+        source:
+          type: table
+          name: assistant_tools
+        filters:
+          - { field: assistant_id, operator: equals }
+          - { field: tool_id, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /assistant_tools/{id}
+        source:
+          type: table
+          name: assistant_tools
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /assistant_tools
+        source:
+          type: table
+          name: assistant_tools
+        fields:
+          - { name: assistant_id, type: uuid }
+          - { name: tool_id, type: uuid }
+          - { name: display_order, type: integer }
+        returns: uuid
+      update:
+        method: PUT
+        path: /assistant_tools/{id}
+        source:
+          type: table
+          name: assistant_tools
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: assistant_id, type: uuid }
+          - { name: tool_id, type: uuid }
+          - { name: display_order, type: integer }
+      delete:
+        method: DELETE
+        path: /assistant_tools/{id}
+        source:
+          type: table
+          name: assistant_tools
+        params:
+          - { name: id, type: uuid, from: route }
+
+  WorkspaceAssistants:
+    endpoints:
+      list:
+        method: GET
+        path: /workspace_assistants
+        source:
+          type: table
+          name: workspace_assistants
+        filters:
+          - { field: workspace_id, operator: equals }
+          - { field: assistant_id, operator: equals }
+          - { field: is_default, operator: equals }
+          - { field: output_template_id, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /workspace_assistants/{id}
+        source:
+          type: table
+          name: workspace_assistants
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /workspace_assistants
+        source:
+          type: table
+          name: workspace_assistants
+        fields:
+          - { name: workspace_id, type: uuid }
+          - { name: assistant_id, type: uuid }
+          - { name: display_order, type: integer }
+          - { name: is_default, type: boolean }
+          - { name: output_template_id, type: uuid }
+        returns: uuid
+      update:
+        method: PUT
+        path: /workspace_assistants/{id}
+        source:
+          type: table
+          name: workspace_assistants
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: workspace_id, type: uuid }
+          - { name: assistant_id, type: uuid }
+          - { name: display_order, type: integer }
+          - { name: is_default, type: boolean }
+          - { name: output_template_id, type: uuid }
+      delete:
+        method: DELETE
+        path: /workspace_assistants/{id}
+        source:
+          type: table
+          name: workspace_assistants
+        params:
+          - { name: id, type: uuid, from: route }
+
+  MedicalTranscriptions:
+    endpoints:
+      list:
+        method: GET
+        path: /medical_transcriptions
+        source:
+          type: table
+          name: medical_transcriptions
+        filters:
+          - { field: session_id, operator: equals }
+          - { field: is_edited, operator: equals }
+          - { field: edited_by, operator: equals }
+          - { field: anonymized, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /medical_transcriptions/{id}
+        source:
+          type: table
+          name: medical_transcriptions
+        params:
+          - { name: id, type: integer, from: route }
+      create:
+        method: POST
+        path: /medical_transcriptions
+        source:
+          type: table
+          name: medical_transcriptions
+        fields:
+          - { name: session_id, type: string }
+          - { name: full_text, type: string }
+          - { name: metadata, type: object }
+          - { name: model, type: string }
+          - { name: language, type: string }
+          - { name: started_at, type: datetime }
+          - { name: completed_at, type: datetime }
+          - { name: duration_seconds, type: integer }
+          - { name: average_confidence, type: decimal }
+          - { name: total_words, type: integer }
+          - { name: is_edited, type: boolean }
+          - { name: edited_text, type: string }
+          - { name: edited_by, type: uuid }
+          - { name: edited_at, type: datetime }
+          - { name: anonymized, type: boolean }
+        returns: integer
+      update:
+        method: PUT
+        path: /medical_transcriptions/{id}
+        source:
+          type: table
+          name: medical_transcriptions
+        params:
+          - { name: id, type: integer, from: route }
+        fields:
+          - { name: session_id, type: string }
+          - { name: full_text, type: string }
+          - { name: metadata, type: object }
+          - { name: model, type: string }
+          - { name: language, type: string }
+          - { name: started_at, type: datetime }
+          - { name: completed_at, type: datetime }
+          - { name: duration_seconds, type: integer }
+          - { name: average_confidence, type: decimal }
+          - { name: total_words, type: integer }
+          - { name: is_edited, type: boolean }
+          - { name: edited_text, type: string }
+          - { name: edited_by, type: uuid }
+          - { name: edited_at, type: datetime }
+          - { name: anonymized, type: boolean }
+      delete:
+        method: DELETE
+        path: /medical_transcriptions/{id}
+        source:
+          type: table
+          name: medical_transcriptions
+        params:
+          - { name: id, type: integer, from: route }
+
+  Attachments:
+    endpoints:
+      list:
+        method: GET
+        path: /attachments
+        source:
+          type: table
+          name: attachments
+        filters:
+          - { field: file_id, operator: equals }
+          - { field: filename, operator: contains }
+          - { field: original_filename, operator: contains }
+          - { field: mime_type, operator: in }
+          - { field: azure_container_name, operator: contains }
+          - { field: azure_blob_name, operator: contains }
+          - { field: is_processed, operator: equals }
+          - { field: workspace_result_id, operator: equals }
+          - { field: is_deleted, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /attachments/{id}
+        source:
+          type: table
+          name: attachments
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /attachments
+        source:
+          type: table
+          name: attachments
+        fields:
+          - { name: file_id, type: uuid, required: true }
+          - { name: filename, type: string }
+          - { name: original_filename, type: string }
+          - { name: mime_type, type: string }
+          - { name: file_size, type: integer }
+          - { name: file_extension, type: string }
+          - { name: azure_blob_url, type: string }
+          - { name: azure_container_name, type: string }
+          - { name: azure_blob_name, type: string }
+          - { name: extracted_text, type: string }
+          - { name: minified_content, type: string }
+          - { name: is_processed, type: boolean }
+          - { name: workspace_result_id, type: uuid }
+          - { name: is_deleted, type: boolean }
+          - { name: deleted_at, type: datetime }
+          - { name: uploaded_at, type: datetime }
+        returns: uuid
+      update:
+        method: PUT
+        path: /attachments/{id}
+        source:
+          type: table
+          name: attachments
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: file_id, type: uuid }
+          - { name: filename, type: string }
+          - { name: original_filename, type: string }
+          - { name: mime_type, type: string }
+          - { name: file_size, type: integer }
+          - { name: file_extension, type: string }
+          - { name: azure_blob_url, type: string }
+          - { name: azure_container_name, type: string }
+          - { name: azure_blob_name, type: string }
+          - { name: extracted_text, type: string }
+          - { name: minified_content, type: string }
+          - { name: is_processed, type: boolean }
+          - { name: workspace_result_id, type: uuid }
+          - { name: is_deleted, type: boolean }
+          - { name: deleted_at, type: datetime }
+          - { name: uploaded_at, type: datetime }
+      delete:
+        method: DELETE
+        path: /attachments/{id}
+        source:
+          type: table
+          name: attachments
+        params:
+          - { name: id, type: uuid, from: route }
+
+  AiToolsResults:
+    endpoints:
+      list:
+        method: GET
+        path: /ai_tools_results
+        source:
+          type: table
+          name: ai_tools_results
+        filters:
+          - { field: user_id, operator: equals }
+          - { field: tool_id, operator: equals }
+          - { field: transcription_id, operator: equals }
+          - { field: workspace_id, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /ai_tools_results/{id}
+        source:
+          type: table
+          name: ai_tools_results
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /ai_tools_results
+        source:
+          type: table
+          name: ai_tools_results
+        fields:
+          - { name: user_id, type: uuid }
+          - { name: tool_id, type: uuid }
+          - { name: transcription_id, type: integer }
+          - { name: workspace_id, type: uuid }
+          - { name: input_data, type: object }
+          - { name: output_data, type: object }
+          - { name: ai_model_used, type: string }
+          - { name: tokens_used, type: integer }
+          - { name: processing_time_ms, type: integer }
+          - { name: error_message, type: string }
+        returns: uuid
+      update:
+        method: PUT
+        path: /ai_tools_results/{id}
+        source:
+          type: table
+          name: ai_tools_results
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: user_id, type: uuid }
+          - { name: tool_id, type: uuid }
+          - { name: transcription_id, type: integer }
+          - { name: workspace_id, type: uuid }
+          - { name: input_data, type: object }
+          - { name: output_data, type: object }
+          - { name: ai_model_used, type: string }
+          - { name: tokens_used, type: integer }
+          - { name: processing_time_ms, type: integer }
+          - { name: error_message, type: string }
+      delete:
+        method: DELETE
+        path: /ai_tools_results/{id}
+        source:
+          type: table
+          name: ai_tools_results
+        params:
+          - { name: id, type: uuid, from: route }
+
+  AiUsageLimits:
+    endpoints:
+      list:
+        method: GET
+        path: /ai_usage_limits
+        source:
+          type: table
+          name: ai_usage_limits
+        filters:
+          - { field: subscription_type, operator: in }
+          - { field: can_create_tools, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /ai_usage_limits/{id}
+        source:
+          type: table
+          name: ai_usage_limits
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /ai_usage_limits
+        source:
+          type: table
+          name: ai_usage_limits
+        fields:
+          - { name: subscription_type, type: string, required: true }
+          - { name: daily_limit, type: integer }
+          - { name: monthly_limit, type: integer }
+          - { name: can_create_tools, type: boolean }
+          - { name: max_custom_tools, type: integer }
+        returns: uuid
+      update:
+        method: PUT
+        path: /ai_usage_limits/{id}
+        source:
+          type: table
+          name: ai_usage_limits
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: subscription_type, type: string }
+          - { name: daily_limit, type: integer }
+          - { name: monthly_limit, type: integer }
+          - { name: can_create_tools, type: boolean }
+          - { name: max_custom_tools, type: integer }
+      delete:
+        method: DELETE
+        path: /ai_usage_limits/{id}
+        source:
+          type: table
+          name: ai_usage_limits
+        params:
+          - { name: id, type: uuid, from: route }
+
+  Plans:
+    endpoints:
+      list:
+        method: GET
+        path: /plans
+        source:
+          type: table
+          name: plans
+        filters:
+          - { field: key, operator: contains }
+          - { field: name, operator: contains }
+          - { field: stripe_price_id, operator: equals }
+          - { field: stripe_product_id, operator: equals }
+          - { field: is_active, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /plans/{id}
+        source:
+          type: table
+          name: plans
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /plans
+        source:
+          type: table
+          name: plans
+        fields:
+          - { name: key, type: string, required: true }
+          - { name: name, type: string }
+          - { name: description, type: string }
+          - { name: price_cents, type: integer }
+          - { name: billing_interval, type: string }
+          - { name: stripe_price_id, type: string }
+          - { name: stripe_product_id, type: string }
+          - { name: ai_daily_limit, type: integer }
+          - { name: ai_monthly_limit, type: integer }
+          - { name: max_tokens_per_request, type: integer }
+          - { name: allowed_models, type: string }
+          - { name: transcription_monthly_minutes, type: integer }
+          - { name: trial_duration_days, type: integer }
+          - { name: plan_duration_days, type: integer }
+          - { name: features, type: object }
+          - { name: is_active, type: boolean }
+          - { name: display_order, type: integer }
+        returns: uuid
+      update:
+        method: PUT
+        path: /plans/{id}
+        source:
+          type: table
+          name: plans
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: key, type: string }
+          - { name: name, type: string }
+          - { name: description, type: string }
+          - { name: price_cents, type: integer }
+          - { name: billing_interval, type: string }
+          - { name: stripe_price_id, type: string }
+          - { name: stripe_product_id, type: string }
+          - { name: ai_daily_limit, type: integer }
+          - { name: ai_monthly_limit, type: integer }
+          - { name: max_tokens_per_request, type: integer }
+          - { name: allowed_models, type: string }
+          - { name: transcription_monthly_minutes, type: integer }
+          - { name: trial_duration_days, type: integer }
+          - { name: plan_duration_days, type: integer }
+          - { name: features, type: object }
+          - { name: is_active, type: boolean }
+          - { name: display_order, type: integer }
+      delete:
+        method: DELETE
+        path: /plans/{id}
+        source:
+          type: table
+          name: plans
+        params:
+          - { name: id, type: uuid, from: route }
+
+  SubscriptionHistory:
+    endpoints:
+      list:
+        method: GET
+        path: /subscription_history
+        source:
+          type: table
+          name: subscription_history
+        filters:
+          - { field: user_id, operator: equals }
+          - { field: plan_id, operator: equals }
+          - { field: previous_status, operator: in }
+          - { field: new_status, operator: in }
+        paginated: true
+      get:
+        method: GET
+        path: /subscription_history/{id}
+        source:
+          type: table
+          name: subscription_history
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /subscription_history
+        source:
+          type: table
+          name: subscription_history
+        fields:
+          - { name: user_id, type: uuid }
+          - { name: plan_id, type: uuid }
+          - { name: previous_status, type: string }
+          - { name: new_status, type: string }
+          - { name: change_reason, type: string }
+          - { name: changed_by, type: string }
+          - { name: metadata, type: object }
+        returns: uuid
+      update:
+        method: PUT
+        path: /subscription_history/{id}
+        source:
+          type: table
+          name: subscription_history
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: user_id, type: uuid }
+          - { name: plan_id, type: uuid }
+          - { name: previous_status, type: string }
+          - { name: new_status, type: string }
+          - { name: change_reason, type: string }
+          - { name: changed_by, type: string }
+          - { name: metadata, type: object }
+      delete:
+        method: DELETE
+        path: /subscription_history/{id}
+        source:
+          type: table
+          name: subscription_history
+        params:
+          - { name: id, type: uuid, from: route }
+
+  UserFavorites:
+    endpoints:
+      list:
+        method: GET
+        path: /user_favorites
+        source:
+          type: table
+          name: user_favorites
+        filters:
+          - { field: user_id, operator: equals }
+          - { field: entity_type, operator: in }
+          - { field: entity_id, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /user_favorites/{id}
+        source:
+          type: table
+          name: user_favorites
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /user_favorites
+        source:
+          type: table
+          name: user_favorites
+        fields:
+          - { name: user_id, type: uuid }
+          - { name: entity_type, type: string }
+          - { name: entity_id, type: uuid }
+          - { name: display_order, type: integer }
+        returns: uuid
+      update:
+        method: PUT
+        path: /user_favorites/{id}
+        source:
+          type: table
+          name: user_favorites
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: user_id, type: uuid }
+          - { name: entity_type, type: string }
+          - { name: entity_id, type: uuid }
+          - { name: display_order, type: integer }
+      delete:
+        method: DELETE
+        path: /user_favorites/{id}
+        source:
+          type: table
+          name: user_favorites
+        params:
+          - { name: id, type: uuid, from: route }
+
+  AuditLogs:
+    endpoints:
+      list:
+        method: GET
+        path: /audit_logs
+        source:
+          type: table
+          name: audit_logs
+        filters:
+          - { field: entity_type, operator: in }
+          - { field: entity_id, operator: equals }
+          - { field: user_id, operator: equals }
+          - { field: contains_personal_data, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /audit_logs/{id}
+        source:
+          type: table
+          name: audit_logs
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /audit_logs
+        source:
+          type: table
+          name: audit_logs
+        fields:
+          - { name: entity_type, type: string }
+          - { name: entity_uuid, type: uuid }
+          - { name: entity_id, type: integer }
+          - { name: action, type: string }
+          - { name: user_id, type: uuid }
+          - { name: ip_address, type: string }
+          - { name: user_agent, type: string }
+          - { name: old_values, type: object }
+          - { name: new_values, type: object }
+          - { name: metadata, type: object }
+          - { name: contains_personal_data, type: boolean }
+          - { name: data_retention_date, type: date }
+        returns: uuid
+      update:
+        method: PUT
+        path: /audit_logs/{id}
+        source:
+          type: table
+          name: audit_logs
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: entity_type, type: string }
+          - { name: entity_uuid, type: uuid }
+          - { name: entity_id, type: integer }
+          - { name: action, type: string }
+          - { name: user_id, type: uuid }
+          - { name: ip_address, type: string }
+          - { name: user_agent, type: string }
+          - { name: old_values, type: object }
+          - { name: new_values, type: object }
+          - { name: metadata, type: object }
+          - { name: contains_personal_data, type: boolean }
+          - { name: data_retention_date, type: date }
+      delete:
+        method: DELETE
+        path: /audit_logs/{id}
+        source:
+          type: table
+          name: audit_logs
+        params:
+          - { name: id, type: uuid, from: route }
+
+  MigrationLog:
+    endpoints:
+      list:
+        method: GET
+        path: /migration_log
+        source:
+          type: table
+          name: migration_log
+        filters:
+          - { field: status, operator: in }
+        paginated: true
+      get:
+        method: GET
+        path: /migration_log/{id}
+        source:
+          type: table
+          name: migration_log
+        params:
+          - { name: id, type: integer, from: route }
+      create:
+        method: POST
+        path: /migration_log
+        source:
+          type: table
+          name: migration_log
+        fields:
+          - { name: phase, type: string }
+          - { name: step, type: string }
+          - { name: status, type: string }
+          - { name: message, type: string }
+          - { name: executed_at, type: datetime }
+        returns: integer
+      update:
+        method: PUT
+        path: /migration_log/{id}
+        source:
+          type: table
+          name: migration_log
+        params:
+          - { name: id, type: integer, from: route }
+        fields:
+          - { name: phase, type: string }
+          - { name: step, type: string }
+          - { name: status, type: string }
+          - { name: message, type: string }
+          - { name: executed_at, type: datetime }
+      delete:
+        method: DELETE
+        path: /migration_log/{id}
+        source:
+          type: table
+          name: migration_log
+        params:
+          - { name: id, type: integer, from: route }
+
+  SystemUpdates:
+    endpoints:
+      list:
+        method: GET
+        path: /system_updates
+        source:
+          type: table
+          name: system_updates
+        filters:
+          - { field: name, operator: contains }
+          - { field: update_type, operator: in }
+        paginated: true
+      get:
+        method: GET
+        path: /system_updates/{id}
+        source:
+          type: table
+          name: system_updates
+        params:
+          - { name: id, type: integer, from: route }
+      create:
+        method: POST
+        path: /system_updates
+        source:
+          type: table
+          name: system_updates
+        fields:
+          - { name: name, type: string }
+          - { name: update_type, type: string }
+          - { name: release_date, type: datetime }
+          - { name: release_notes, type: string }
+        returns: integer
+      update:
+        method: PUT
+        path: /system_updates/{id}
+        source:
+          type: table
+          name: system_updates
+        params:
+          - { name: id, type: integer, from: route }
+        fields:
+          - { name: name, type: string }
+          - { name: update_type, type: string }
+          - { name: release_date, type: datetime }
+          - { name: release_notes, type: string }
+      delete:
+        method: DELETE
+        path: /system_updates/{id}
+        source:
+          type: table
+          name: system_updates
+        params:
+          - { name: id, type: integer, from: route }
+
+  Faq:
+    endpoints:
+      list:
+        method: GET
+        path: /faq
+        source:
+          type: table
+          name: faq
+        filters:
+          - { field: is_active, operator: equals }
+        paginated: true
+      get:
+        method: GET
+        path: /faq/{id}
+        source:
+          type: table
+          name: faq
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /faq
+        source:
+          type: table
+          name: faq
+        fields:
+          - { name: question, type: string }
+          - { name: answer, type: string }
+          - { name: order_number, type: integer }
+          - { name: is_active, type: boolean }
+        returns: uuid
+      update:
+        method: PUT
+        path: /faq/{id}
+        source:
+          type: table
+          name: faq
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: question, type: string }
+          - { name: answer, type: string }
+          - { name: order_number, type: integer }
+          - { name: is_active, type: boolean }
+      delete:
+        method: DELETE
+        path: /faq/{id}
+        source:
+          type: table
+          name: faq
+        params:
+          - { name: id, type: uuid, from: route }
+
