@@ -1,0 +1,163 @@
+version: "1.0"
+
+database:
+  provider: postgresql
+  connection: "${DB_CONNECTION}"
+
+settings:
+  base_path: /api
+  default_page_size: 25
+  max_page_size: 100
+  generate_openapi: true
+
+entities:
+
+  Patient:
+    description: "Pacientes do sistema"
+
+    endpoints:
+      list:
+        method: GET
+        path: /patients
+        source:
+          type: view
+          name: vw_patients_active
+        filters:
+          - { field: name, operator: contains }
+          - { field: status, operator: equals }
+        sort: [name, birth_date, created_at]
+        paginated: true
+        # Phase 4: Caching - cache list for 5 minutes
+        cache:
+          duration: 300
+          vary_by_query: true
+
+      get:
+        method: GET
+        path: /patients/{id}
+        source:
+          type: view
+          name: vw_patient_detail
+        params:
+          - { name: id, type: uuid, from: route }
+        # Phase 4: Caching - cache single patient for 10 minutes
+        cache:
+          duration: 600
+
+      create:
+        method: POST
+        path: /patients
+        source:
+          type: function
+          name: sp_create_patient
+        fields:
+          - { name: p_name, type: string, required: true, max: 200 }
+          - { name: p_birth_date, type: date, required: true }
+          - { name: p_cpf, type: string, required: true, pattern: "^\\d{11}$" }
+        returns: uuid
+        # Phase 4: Authorization - requires authentication
+        authorize: true
+        # Phase 4: Rate Limiting - 10 requests per minute
+        rate_limit:
+          limit: 10
+          window: 60
+
+      update:
+        method: PUT
+        path: /patients/{id}
+        source:
+          type: function
+          name: sp_update_patient
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: p_name, type: string, max: 200 }
+        # Phase 4: Authorization - requires authentication
+        authorize: true
+
+      delete:
+        method: DELETE
+        path: /patients/{id}
+        source:
+          type: function
+          name: sp_delete_patient
+        params:
+          - { name: id, type: uuid, from: route }
+        # Phase 4: Authorization - admin only
+        policy: admin_only
+        roles:
+          - admin
+
+  Doctor:
+    description: "Medicos do sistema"
+
+    endpoints:
+      list:
+        method: GET
+        path: /doctors
+        source:
+          type: table
+          name: doctors
+        filters:
+          - { field: name, operator: contains }
+          - { field: specialty, operator: equals }
+        sort: [name, specialty]
+        paginated: true
+        # Phase 4: Caching
+        cache:
+          duration: 600
+          vary_by_query: true
+
+      get:
+        method: GET
+        path: /doctors/{id}
+        source:
+          type: table
+          name: doctors
+        params:
+          - { name: id, type: uuid, from: route }
+        cache:
+          duration: 600
+
+  Appointment:
+    description: "Consultas agendadas"
+
+    endpoints:
+      list:
+        method: GET
+        path: /appointments
+        source:
+          type: view
+          name: vw_appointments
+        filters:
+          - { field: patient_id, operator: equals }
+          - { field: doctor_id, operator: equals }
+          - { field: status, operator: equals }
+        sort: [appointment_date]
+        paginated: true
+        # Phase 4: Authorization - must be logged in to see appointments
+        authorize: true
+        # Phase 4: Caching - short cache, vary by user
+        cache:
+          duration: 60
+          vary_by_query: true
+          vary_by_user: true
+
+      create:
+        method: POST
+        path: /appointments
+        source:
+          type: function
+          name: sp_create_appointment
+        fields:
+          - { name: patient_id, type: uuid, required: true }
+          - { name: doctor_id, type: uuid, required: true }
+          - { name: appointment_date, type: datetime, required: true }
+          - { name: notes, type: string, max: 1000 }
+        returns: uuid
+        # Phase 4: Authorization - doctors or admin can create
+        policy: doctor_or_admin
+        # Phase 4: Rate Limiting
+        rate_limit:
+          limit: 20
+          window: 60

@@ -1,0 +1,226 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DeclareAPI Configuration",
+  "description": "Configuration schema for DeclareAPI - declarative REST API framework for .NET",
+  "type": "object",
+  "required": ["version", "database", "entities"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "enum": ["1.0"],
+      "description": "Configuration schema version"
+    },
+    "database": {
+      "type": "object",
+      "required": ["provider", "connection"],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["postgresql", "sqlserver", "mysql", "sqlite"],
+          "description": "Database provider type"
+        },
+        "connection": {
+          "type": "string",
+          "description": "Connection string. Supports ${ENV_VAR} syntax for environment variables."
+        }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "base_path": {
+          "type": "string",
+          "default": "/api",
+          "description": "Base path for all API endpoints"
+        },
+        "default_page_size": {
+          "type": "integer",
+          "default": 25,
+          "minimum": 1,
+          "description": "Default page size for paginated endpoints"
+        },
+        "max_page_size": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 1,
+          "description": "Maximum allowed page size"
+        },
+        "generate_openapi": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to generate OpenAPI documentation"
+        }
+      }
+    },
+    "entities": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/entity"
+      },
+      "description": "API entities (resources)"
+    }
+  },
+  "definitions": {
+    "entity": {
+      "type": "object",
+      "required": ["endpoints"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Entity description for documentation"
+        },
+        "endpoints": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/endpoint"
+          },
+          "description": "Endpoints for this entity"
+        }
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "required": ["method", "path"],
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+          "description": "HTTP method"
+        },
+        "path": {
+          "type": "string",
+          "description": "URL path (supports route parameters like {id})"
+        },
+        "handler": {
+          "type": "string",
+          "description": "Custom C# handler class name. When present, source/fields are ignored."
+        },
+        "source": {
+          "$ref": "#/definitions/source",
+          "description": "Data source configuration"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/field"
+          },
+          "description": "Input fields for POST/PUT/PATCH endpoints"
+        },
+        "params": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/param"
+          },
+          "description": "Route/query/header parameters"
+        },
+        "filters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/filter"
+          },
+          "description": "Query filters for list endpoints"
+        },
+        "sort": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Allowed sort fields"
+        },
+        "paginated": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether endpoint supports pagination"
+        },
+        "returns": {
+          "type": "string",
+          "description": "Return type for create operations (e.g., 'uuid')"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["type", "name"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["table", "view", "procedure", "function"],
+          "description": "Database object type"
+        },
+        "name": {
+          "type": "string",
+          "description": "Database object name"
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Field name"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["string", "int", "long", "decimal", "bool", "date", "datetime", "uuid", "json"],
+          "description": "Field data type"
+        },
+        "required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether field is required"
+        },
+        "max": {
+          "type": "integer",
+          "description": "Maximum length for strings or maximum value for numbers"
+        },
+        "min": {
+          "type": "integer",
+          "description": "Minimum length for strings or minimum value for numbers"
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Regex pattern for validation"
+        },
+        "default": {
+          "description": "Default value if not provided"
+        }
+      }
+    },
+    "param": {
+      "type": "object",
+      "required": ["name", "type", "from"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Parameter name"
+        },
+        "type": {
+          "type": "string",
+          "description": "Parameter data type"
+        },
+        "from": {
+          "type": "string",
+          "enum": ["route", "query", "header"],
+          "description": "Parameter source"
+        }
+      }
+    },
+    "filter": {
+      "type": "object",
+      "required": ["field", "operator"],
+      "properties": {
+        "field": {
+          "type": "string",
+          "description": "Field to filter on"
+        },
+        "operator": {
+          "type": "string",
+          "enum": ["equals", "contains", "starts_with", "ends_with", "between", "in", "gt", "gte", "lt", "lte"],
+          "description": "Filter operator"
+        }
+      }
+    }
+  }
+}
