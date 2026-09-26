@@ -1,0 +1,18 @@
+# No endpoint uses cache or rate_limit, while EnableCaching/EnableRateLimiting keep their default (true).
+version: "1.0"
+
+database:
+  provider: postgresql
+  connection: "${DB_CONNECTION}"
+
+settings:
+  base_path: /api
+
+entities:
+  Doctor:
+    endpoints:
+      list:
+        method: GET
+        path: /doctors
+        source: { type: table, name: doctors }
+        paginated: true

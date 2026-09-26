@@ -20,11 +20,8 @@ public static class RateLimitingExtensions
     {
         var rateLimitPolicies = CollectRateLimitPolicies(config);
 
-        if (rateLimitPolicies.Count == 0)
-        {
-            return services;
-        }
-
+        // Registered even when no endpoint declares a policy: UseDeclareApiRateLimiting() adds
+        // the UseRateLimiter middleware whenever the feature is enabled, and it requires these services.
         services.AddRateLimiter(options =>
         {
             // Configure rejection response

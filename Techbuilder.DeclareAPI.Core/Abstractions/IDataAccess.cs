@@ -50,4 +50,26 @@ public interface IDataAccess
     /// Executes a command and returns a scalar value (e.g., newly created ID).
     /// </summary>
     Task<T?> ExecuteScalarAsync<T>(string source, object? parameters = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Executes a database routine and returns the number of affected rows.
+    /// Each parameter is passed as a named argument (<c>name => value</c>);
+    /// <paramref name="sourceType"/> selects how the routine is invoked (function vs procedure).
+    /// </summary>
+    Task<int> ExecuteAsync(string source, SourceType sourceType, object? parameters = null, CancellationToken ct = default)
+        => ExecuteAsync(source, parameters, ct);
+
+    /// <summary>
+    /// Executes a database routine and returns a scalar value (e.g., newly created ID).
+    /// Each parameter is passed as a named argument (<c>name => value</c>);
+    /// <paramref name="sourceType"/> selects how the routine is invoked (function vs procedure).
+    /// </summary>
+    Task<T?> ExecuteScalarAsync<T>(string source, SourceType sourceType, object? parameters = null, CancellationToken ct = default)
+        => ExecuteScalarAsync<T>(source, parameters, ct);
+
+    /// <summary>
+    /// Verifies that the database is reachable. Used by the database health check.
+    /// </summary>
+    Task CheckConnectionAsync(CancellationToken ct = default)
+        => QuerySingleAsync<int>("SELECT 1", ct: ct);
 }

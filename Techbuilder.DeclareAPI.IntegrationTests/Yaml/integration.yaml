@@ -1,0 +1,164 @@
+version: "1.0"
+
+database:
+  provider: postgresql
+  connection: "${DB_CONNECTION}"
+
+settings:
+  base_path: /api
+  max_page_size: 3
+
+entities:
+
+  Item:
+    endpoints:
+      list:
+        method: GET
+        path: /items
+        source: { type: table, name: items }
+        filters:
+          - { field: name, operator: contains }
+          - { field: sku, operator: starts_with }
+          - { field: supplier, operator: ends_with }
+          - { field: category, operator: equals }
+          - { field: qty, operator: gt }
+          - { field: price, operator: gte }
+          - { field: weight, operator: lt }
+          - { field: stock, operator: lte }
+          - { field: status, operator: in }
+          - { field: created_on, operator: between }
+          - { field: owner_id, operator: equals }
+        sort: [name, qty, price, created_on]
+        paginated: true
+        cache:
+          duration: 60
+
+  Patient:
+    endpoints:
+      get:
+        method: GET
+        path: /patients/{id}
+        source: { type: view, name: vw_patient_detail }
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /patients
+        source: { type: function, name: sp_create_patient }
+        fields:
+          - { name: p_name, type: string, required: true, max: 200 }
+          - { name: p_birth_date, type: date, required: true }
+          - { name: p_cpf, type: string, required: true, pattern: "^\\d{11}$" }
+        returns: uuid
+      update:
+        method: PUT
+        path: /patients/{id}
+        source: { type: function, name: sp_update_patient }
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: p_name, type: string, max: 200 }
+      patch:
+        method: PATCH
+        path: /patients/{id}
+        source: { type: function, name: sp_update_patient }
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: p_name, type: string, max: 200 }
+      delete:
+        method: DELETE
+        path: /patients/{id}
+        source: { type: function, name: sp_delete_patient }
+        params:
+          - { name: id, type: uuid, from: route }
+
+  Appointment:
+    endpoints:
+      create:
+        method: POST
+        path: /appointments
+        source: { type: function, name: sp_create_appointment }
+        fields:
+          - { name: patient_id, type: uuid, required: true }
+          - { name: doctor_id, type: uuid, required: true }
+          - { name: appointment_date, type: datetime, required: true }
+          - { name: notes, type: string, max: 1000 }
+        returns: uuid
+
+  Event:
+    endpoints:
+      create:
+        method: POST
+        path: /events
+        source: { type: function, name: fn_log_event }
+        fields:
+          - { name: message, type: string, required: true }
+          - { name: level, type: string }
+        rate_limit:
+          limit: 1000
+          window: 60
+      create_with_procedure:
+        method: POST
+        path: /events/procedure
+        source: { type: procedure, name: pr_log_event }
+        fields:
+          - { name: message, type: string, required: true }
+          - { name: level, type: string }
+
+  Doctor:
+    endpoints:
+      get:
+        method: GET
+        path: /doctors/{id}
+        source: { type: table, name: doctors }
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /doctors
+        source: { type: procedure, name: pr_create_doctor }
+        fields:
+          - { name: name, type: string, required: true }
+          - { name: specialty, type: string, required: true }
+          - { name: crm, type: string, required: true }
+        returns: uuid
+      update:
+        method: PUT
+        path: /doctors/{id}
+        source: { type: procedure, name: pr_update_doctor }
+        params:
+          - { name: id, type: uuid, from: route }
+        fields:
+          - { name: specialty, type: string, required: true }
+      delete:
+        method: DELETE
+        path: /doctors/{id}
+        source: { type: procedure, name: pr_delete_doctor }
+        params:
+          - { name: id, type: uuid, from: route }
+
+  Room:
+    endpoints:
+      list:
+        method: GET
+        path: /rooms
+        source: { type: view, name: clinic.vw_rooms }
+        filters:
+          - { field: floor, operator: equals }
+        sort: [name]
+        paginated: true
+      get:
+        method: GET
+        path: /rooms/{id}
+        source: { type: table, name: clinic.rooms }
+        params:
+          - { name: id, type: uuid, from: route }
+      create:
+        method: POST
+        path: /rooms
+        source: { type: function, name: clinic.fn_create_room }
+        fields:
+          - { name: name, type: string, required: true }
+          - { name: floor, type: int, required: true }
+        returns: uuid

@@ -19,11 +19,8 @@ public static class CachingExtensions
     {
         var cachePolicies = CollectCachePolicies(config);
 
-        if (cachePolicies.Count == 0)
-        {
-            return services;
-        }
-
+        // Registered even when no endpoint declares a policy: UseDeclareApiCaching() adds
+        // the UseOutputCache middleware whenever the feature is enabled, and it requires these services.
         services.AddOutputCache(options =>
         {
             // Register each unique cache policy

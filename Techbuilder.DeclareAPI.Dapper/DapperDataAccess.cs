@@ -1,15 +1,15 @@
 using System.Data;
+using System.Reflection;
+using System.Text.Json;
 using Dapper;
 using Npgsql;
+using NpgsqlTypes;
 using Techbuilder.DeclareAPI.Core.Abstractions;
 using Techbuilder.DeclareAPI.Core.Configuration;
 using Techbuilder.DeclareAPI.Core.Query;
 
 namespace Techbuilder.DeclareAPI.Dapper;
 
-/// <summary>
-/// Dapper-based implementation of IDataAccess for PostgreSQL.
-/// </summary>
 public class DapperDataAccess : IDataAccess
 {
     private readonly string _connectionString;
@@ -33,15 +33,19 @@ public class DapperDataAccess : IDataAccess
     public async Task<T?> QuerySingleAsync<T>(string source, object? parameters = null, CancellationToken ct = default)
     {
         using var connection = CreateConnection();
-        var sql = BuildSelectSql(source, parameters);
-        return await connection.QuerySingleOrDefaultAsync<T>(new CommandDefinition(sql, parameters, cancellationToken: ct));
+        var arguments = ToArguments(parameters);
+        var sql = BuildSelectSql(source, arguments);
+        return await connection.QuerySingleOrDefaultAsync<T>(
+            new CommandDefinition(sql, CreateParameters(arguments), cancellationToken: ct));
     }
 
     public async Task<IEnumerable<T>> QueryAsync<T>(string source, object? parameters = null, CancellationToken ct = default)
     {
         using var connection = CreateConnection();
-        var sql = BuildSelectSql(source, parameters);
-        return await connection.QueryAsync<T>(new CommandDefinition(sql, parameters, cancellationToken: ct));
+        var arguments = ToArguments(parameters);
+        var sql = BuildSelectSql(source, arguments);
+        return await connection.QueryAsync<T>(
+            new CommandDefinition(sql, CreateParameters(arguments), cancellationToken: ct));
     }
 
     public async Task<PagedResult<T>> QueryPagedAsync<T>(
@@ -58,18 +62,19 @@ public class DapperDataAccess : IDataAccess
         var quotedSource = QuoteIdentifier(source);
 
         // Build WHERE clause from parameters
-        var whereClause = BuildWhereClause(parameters);
+        var arguments = ToArguments(parameters);
+        var whereClause = BuildWhereClause(arguments);
 
         // Count query
         var countSql = $"SELECT COUNT(*) FROM {quotedSource}{whereClause}";
         var totalCount = await connection.ExecuteScalarAsync<int>(
-            new CommandDefinition(countSql, parameters, cancellationToken: ct));
+            new CommandDefinition(countSql, CreateParameters(arguments), cancellationToken: ct));
 
         // Data query with pagination
         var orderByClause = string.IsNullOrEmpty(orderBy) ? "" : $" ORDER BY {orderBy}";
         var dataSql = $"SELECT * FROM {quotedSource}{whereClause}{orderByClause} LIMIT @_limit OFFSET @_offset";
 
-        var dataParams = new DynamicParameters(parameters);
+        var dataParams = CreateParameters(arguments);
         dataParams.Add("_limit", pageSize);
         dataParams.Add("_offset", offset);
 
@@ -106,17 +111,13 @@ public class DapperDataAccess : IDataAccess
         // Count query
         var countSql = $"SELECT COUNT(*) FROM {quotedSource}{whereClause}";
         var totalCount = await connection.ExecuteScalarAsync<int>(
-            new CommandDefinition(countSql, filterParams, cancellationToken: ct));
+            new CommandDefinition(countSql, CreateParameters(filterParams), cancellationToken: ct));
 
         // Data query with pagination
         var orderByClause = string.IsNullOrEmpty(orderBy) ? "" : $" ORDER BY {SanitizeOrderBy(orderBy)}";
         var dataSql = $"SELECT * FROM {quotedSource}{whereClause}{orderByClause} LIMIT @_limit OFFSET @_offset";
 
-        var dataParams = new DynamicParameters();
-        foreach (var param in filterParams)
-        {
-            dataParams.Add(param.Key, param.Value);
-        }
+        var dataParams = CreateParameters(filterParams);
         dataParams.Add("_limit", pageSize);
         dataParams.Add("_offset", offset);
 
@@ -142,87 +143,212 @@ public class DapperDataAccess : IDataAccess
         return $"\"{field}\" {direction}";
     }
 
-    public async Task<int> ExecuteAsync(string source, object? parameters = null, CancellationToken ct = default)
+    /// <summary>
+    /// Executes <paramref name="source"/> as a procedure (<c>CALL</c>). Kept for callers that don't pass
+    /// a <see cref="SourceType"/>; use the overload that takes one to call a function.
+    /// </summary>
+    public Task<int> ExecuteAsync(string source, object? parameters = null, CancellationToken ct = default)
+        => ExecuteAsync(source, SourceType.Procedure, parameters, ct);
+
+    /// <summary>
+    /// Executes <paramref name="source"/> as a function and returns the first column of the first row.
+    /// Kept for callers that don't pass a <see cref="SourceType"/>.
+    /// </summary>
+    public Task<T?> ExecuteScalarAsync<T>(string source, object? parameters = null, CancellationToken ct = default)
+        => ExecuteScalarAsync<T>(source, SourceType.Function, parameters, ct);
+
+    public async Task<int> ExecuteAsync(string source, SourceType sourceType, object? parameters = null, CancellationToken ct = default)
     {
         using var connection = CreateConnection();
-
-        // For stored procedures/functions, use different approach
-        var sql = BuildExecuteSql(source);
-        return await connection.ExecuteAsync(new CommandDefinition(sql, parameters, cancellationToken: ct));
+        var arguments = ToArguments(parameters);
+        var sql = BuildRoutineCallSql(source, sourceType, arguments);
+        return await connection.ExecuteAsync(
+            new CommandDefinition(sql, CreateParameters(arguments), cancellationToken: ct));
     }
 
-    public async Task<T?> ExecuteScalarAsync<T>(string source, object? parameters = null, CancellationToken ct = default)
+    public async Task<T?> ExecuteScalarAsync<T>(string source, SourceType sourceType, object? parameters = null, CancellationToken ct = default)
     {
         using var connection = CreateConnection();
-
-        // For PostgreSQL functions that return a value
-        var sql = BuildFunctionCallSql(source, parameters);
-        return await connection.ExecuteScalarAsync<T>(new CommandDefinition(sql, parameters, cancellationToken: ct));
+        var arguments = ToArguments(parameters);
+        var sql = BuildRoutineCallSql(source, sourceType, arguments);
+        return await connection.ExecuteScalarAsync<T>(
+            new CommandDefinition(sql, CreateParameters(arguments), cancellationToken: ct));
     }
 
-    private string BuildSelectSql(string source, object? parameters)
+    public async Task CheckConnectionAsync(CancellationToken ct = default)
+    {
+        using var connection = CreateConnection();
+        await connection.ExecuteScalarAsync<int>(new CommandDefinition("SELECT 1", cancellationToken: ct));
+    }
+
+    private string BuildSelectSql(string source, IReadOnlyList<KeyValuePair<string, object?>> arguments)
     {
         var quotedSource = QuoteIdentifier(source);
-        var whereClause = BuildWhereClause(parameters);
+        var whereClause = BuildWhereClause(arguments);
         return $"SELECT * FROM {quotedSource}{whereClause}";
     }
 
-    private string BuildWhereClause(object? parameters)
+    /// <summary>
+    /// <c>WHERE "key" = @key AND ...</c>: one equality per argument, column name = argument name.
+    /// Null values and internal arguments (leading <c>_</c>) are skipped.
+    /// </summary>
+    private string BuildWhereClause(IReadOnlyList<KeyValuePair<string, object?>> arguments)
     {
-        if (parameters == null) return "";
-
-        var props = parameters.GetType().GetProperties()
-            .Where(p => p.GetValue(parameters) != null)
-            .Where(p => !p.Name.StartsWith("_")) // Skip internal parameters
+        var conditions = arguments
+            .Where(a => a.Value != null)
+            .Where(a => !a.Key.StartsWith('_')) // Skip internal parameters
+            .Select(a => $"{QuoteIdentifier(RequireParameterName(a.Key))} = @{a.Key}")
             .ToList();
 
-        if (props.Count == 0) return "";
+        if (conditions.Count == 0) return "";
 
-        var conditions = props.Select(p => $"{QuoteIdentifier(p.Name)} = @{p.Name}");
         return " WHERE " + string.Join(" AND ", conditions);
     }
 
-    private string BuildExecuteSql(string source)
+    /// <summary>
+    /// Calls a database routine with named arguments, one per key: <c>arg => @arg</c>.
+    /// PostgreSQL: a function is called with <c>SELECT * FROM "fn"(...)</c> (the scalar result is the first
+    /// column of the first row), a procedure with <c>CALL "proc"(...)</c>. Argument names are written
+    /// unquoted, so PostgreSQL folds them to lower case exactly as in a hand-written call. Arguments left out
+    /// take the routine's DEFAULT.
+    /// </summary>
+    private string BuildRoutineCallSql(string source, SourceType sourceType, IReadOnlyList<KeyValuePair<string, object?>> arguments)
     {
-        // Assume it's a stored procedure/function call
-        return _provider switch
+        var quotedSource = QuoteIdentifier(source);
+        var names = arguments.Select(a => RequireParameterName(a.Key)).ToList();
+
+        return (_provider, sourceType) switch
         {
-            DatabaseProvider.PostgreSQL => $"CALL {QuoteIdentifier(source)}()",
-            _ => $"EXEC {QuoteIdentifier(source)}"
+            (DatabaseProvider.PostgreSQL, SourceType.Procedure) =>
+                $"CALL {quotedSource}({string.Join(", ", names.Select(n => $"{n} => @{n}"))})",
+            (DatabaseProvider.PostgreSQL, _) =>
+                $"SELECT * FROM {quotedSource}({string.Join(", ", names.Select(n => $"{n} => @{n}"))})",
+            (_, SourceType.Procedure) =>
+                $"EXEC {quotedSource} {string.Join(", ", names.Select(n => $"@{n} = @{n}"))}".TrimEnd(),
+            _ =>
+                $"SELECT {quotedSource}({string.Join(", ", names.Select(n => $"@{n}"))})"
         };
     }
 
-    private string BuildFunctionCallSql(string source, object? parameters)
+    /// <summary>
+    /// Turns the caller's parameters into an ordered list of name/value pairs. Accepts a dictionary
+    /// (what the router passes), <see cref="DynamicParameters"/>, or an object whose public properties
+    /// are the parameters (anonymous types in custom handlers).
+    /// </summary>
+    private static IReadOnlyList<KeyValuePair<string, object?>> ToArguments(object? parameters)
     {
-        var quotedSource = QuoteIdentifier(source);
-
-        if (parameters == null)
-            return $"SELECT {quotedSource}()";
-
-        var paramNames = parameters.GetType().GetProperties()
-            .Select(p => $"@{p.Name}");
-
-        return $"SELECT {quotedSource}({string.Join(", ", paramNames)})";
+        return parameters switch
+        {
+            null => Array.Empty<KeyValuePair<string, object?>>(),
+            IEnumerable<KeyValuePair<string, object?>> pairs => pairs.ToList(),
+            DynamicParameters dynamicParameters => dynamicParameters.ParameterNames
+                .Select(name => new KeyValuePair<string, object?>(name, dynamicParameters.Get<object?>(name)))
+                .ToList(),
+            _ => parameters.GetType()
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => p.CanRead && p.GetIndexParameters().Length == 0)
+                .Select(p => new KeyValuePair<string, object?>(p.Name, p.GetValue(parameters)))
+                .ToList()
+        };
     }
 
+    /// <summary>
+    /// Builds Dapper parameters. On PostgreSQL, strings and nulls are sent with the <c>unknown</c> type, so the
+    /// server coerces them to the target column/argument type exactly like a quoted literal
+    /// (<c>'2024-01-01'</c> against a date, <c>'42'</c> against an int, a uuid string against a uuid).
+    /// HTTP inputs (query-string filters, JSON strings) are always text; without this PostgreSQL rejects
+    /// <c>uuid = text</c>, <c>integer &gt; text</c>, and routine calls whose arguments are not text.
+    /// </summary>
+    private DynamicParameters CreateParameters(IEnumerable<KeyValuePair<string, object?>> arguments)
+    {
+        var parameters = new DynamicParameters();
+
+        foreach (var (name, rawValue) in arguments)
+        {
+            var value = NormalizeValue(rawValue);
+
+            if (_provider == DatabaseProvider.PostgreSQL && value is null or string)
+            {
+                parameters.Add(name, new UntypedPostgresParameter(value as string));
+            }
+            else
+            {
+                parameters.Add(name, value);
+            }
+        }
+
+        return parameters;
+    }
+
+    private static object? NormalizeValue(object? value)
+    {
+        if (value is not JsonElement json) return value;
+
+        return json.ValueKind switch
+        {
+            JsonValueKind.String => json.GetString(),
+            JsonValueKind.Number => json.TryGetInt64(out var l) ? l : json.GetDecimal(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null or JsonValueKind.Undefined => null,
+            _ => json.GetRawText() // object/array: JSON text, coerced to json/jsonb by the server
+        };
+    }
+
+    private static string RequireParameterName(string name)
+    {
+        var valid = !string.IsNullOrEmpty(name) &&
+                    (char.IsAsciiLetter(name[0]) || name[0] == '_') &&
+                    name.All(c => char.IsAsciiLetterOrDigit(c) || c == '_');
+
+        if (!valid)
+            throw new ArgumentException($"Invalid parameter name: {name}", nameof(name));
+
+        return name;
+    }
+
+    /// <summary>
+    /// Quotes each part of a possibly schema-qualified name: <c>clinic.rooms</c> → <c>"clinic"."rooms"</c>.
+    /// </summary>
     private string QuoteIdentifier(string identifier)
     {
         // Prevent SQL injection by validating identifier
         if (!IsValidIdentifier(identifier))
             throw new ArgumentException($"Invalid identifier: {identifier}", nameof(identifier));
 
-        return _provider switch
+        var parts = identifier.Split('.');
+
+        return string.Join(".", parts.Select(part => _provider switch
         {
-            DatabaseProvider.PostgreSQL => $"\"{identifier}\"",
-            _ => $"[{identifier}]"
-        };
+            DatabaseProvider.PostgreSQL => $"\"{part}\"",
+            _ => $"[{part}]"
+        }));
     }
 
     private static bool IsValidIdentifier(string identifier)
     {
-        // Allow only alphanumeric characters, underscores, and dots (for schema.table)
+        // Allow only alphanumeric characters, underscores, and dots (for schema.table); no empty parts
         return !string.IsNullOrEmpty(identifier) &&
-               identifier.All(c => char.IsLetterOrDigit(c) || c == '_' || c == '.');
+               identifier.All(c => char.IsLetterOrDigit(c) || c == '_' || c == '.') &&
+               identifier.Split('.').All(part => part.Length > 0);
+    }
+
+    /// <summary>
+    /// A PostgreSQL parameter sent with the <c>unknown</c> type (text or NULL), resolved by the server.
+    /// </summary>
+    private sealed class UntypedPostgresParameter : SqlMapper.ICustomQueryParameter
+    {
+        private readonly string? _value;
+
+        public UntypedPostgresParameter(string? value) => _value = value;
+
+        public void AddParameter(IDbCommand command, string name)
+        {
+            command.Parameters.Add(new NpgsqlParameter(name, NpgsqlDbType.Unknown)
+            {
+                Value = (object?)_value ?? DBNull.Value
+            });
+        }
     }
 }
 
