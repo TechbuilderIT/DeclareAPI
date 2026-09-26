@@ -32,9 +32,7 @@ public class DeclareApiHealthCheck : IHealthCheck
         try
         {
             // Try a simple database connectivity check
-            await _dataAccess.QuerySingleAsync<int>(
-                "SELECT 1",
-                ct: cancellationToken);
+            await _dataAccess.CheckConnectionAsync(cancellationToken);
 
             data["database"] = "connected";
 

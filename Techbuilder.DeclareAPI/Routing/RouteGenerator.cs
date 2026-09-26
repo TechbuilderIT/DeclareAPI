@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -336,16 +338,21 @@ public class RouteGenerator
             if (endpoint.Source?.SourceType == SourceType.Procedure ||
                 endpoint.Source?.SourceType == SourceType.Function)
             {
+                var arguments = BuildRoutineArguments(endpoint, new Dictionary<string, object?>(), body.Value);
+                if (FindInvalidArgumentName(arguments) is { } invalid)
+                    return Results.BadRequest(ApiError.BadRequest($"Invalid field name: {invalid}"));
+
                 if (!string.IsNullOrEmpty(endpoint.Returns))
                 {
                     var result = await data.ExecuteScalarAsync<object>(
                         endpoint.Source.Name,
-                        body.Value,
+                        endpoint.Source.SourceType,
+                        arguments,
                         ct);
                     return Results.Created($"{path}/{result}", new { id = result });
                 }
 
-                await data.ExecuteAsync(endpoint.Source.Name, body.Value, ct);
+                await data.ExecuteAsync(endpoint.Source.Name, endpoint.Source.SourceType, arguments, ct);
                 return Results.Created(path, null);
             }
 
@@ -355,10 +362,18 @@ public class RouteGenerator
 
     private RouteHandlerBuilder MapPutEndpoint(IEndpointRouteBuilder app, EndpointConfig endpoint, string path)
     {
-        return app.MapPut(path, async (
-            HttpContext ctx,
-            IDataAccess data,
-            CancellationToken ct = default) =>
+        return app.MapPut(path, CreateUpdateHandler(endpoint));
+    }
+
+    private RouteHandlerBuilder MapPatchEndpoint(IEndpointRouteBuilder app, EndpointConfig endpoint, string path)
+    {
+        // PATCH behaves like PUT, but is mapped to the PATCH verb
+        return app.MapPatch(path, CreateUpdateHandler(endpoint));
+    }
+
+    private Func<HttpContext, IDataAccess, CancellationToken, Task<IResult>> CreateUpdateHandler(EndpointConfig endpoint)
+    {
+        return async (HttpContext ctx, IDataAccess data, CancellationToken ct) =>
         {
             var routeParams = ExtractRouteParameters(ctx, endpoint);
             var body = await ReadAndValidateBody(ctx, endpoint);
@@ -369,17 +384,13 @@ public class RouteGenerator
                 return Results.BadRequest(body.Error);
             }
 
-            var parameters = MergeParameters(routeParams, body.Value);
+            var arguments = BuildRoutineArguments(endpoint, routeParams, body.Value);
+            if (FindInvalidArgumentName(arguments) is { } invalid)
+                return Results.BadRequest(ApiError.BadRequest($"Invalid field name: {invalid}"));
 
-            await data.ExecuteAsync(endpoint.Source!.Name, parameters, ct);
+            await data.ExecuteAsync(endpoint.Source!.Name, endpoint.Source.SourceType, arguments, ct);
             return Results.NoContent();
-        });
-    }
-
-    private RouteHandlerBuilder MapPatchEndpoint(IEndpointRouteBuilder app, EndpointConfig endpoint, string path)
-    {
-        // PATCH is similar to PUT for now
-        return MapPutEndpoint(app, endpoint, path);
+        };
     }
 
     private RouteHandlerBuilder MapDeleteEndpoint(IEndpointRouteBuilder app, EndpointConfig endpoint, string path)
@@ -389,9 +400,9 @@ public class RouteGenerator
             IDataAccess data,
             CancellationToken ct = default) =>
         {
-            var parameters = ExtractRouteParameters(ctx, endpoint);
+            var arguments = BuildRoutineArguments(endpoint, ExtractRouteParameters(ctx, endpoint), null);
 
-            await data.ExecuteAsync(endpoint.Source!.Name, parameters, ct);
+            await data.ExecuteAsync(endpoint.Source!.Name, endpoint.Source.SourceType, arguments, ct);
             return Results.NoContent();
         });
     }
@@ -441,7 +452,7 @@ public class RouteGenerator
         return parameters;
     }
 
-    private static object ExtractRouteParameters(HttpContext ctx, EndpointConfig endpoint)
+    private static Dictionary<string, object?> ExtractRouteParameters(HttpContext ctx, EndpointConfig endpoint)
     {
         var parameters = new Dictionary<string, object?>();
 
@@ -556,19 +567,108 @@ public class RouteGenerator
         return allowedFields.Contains(field, StringComparer.OrdinalIgnoreCase) ? orderBy : null;
     }
 
-    private static Dictionary<string, object?> MergeParameters(object routeParams, Dictionary<string, object?>? bodyParams)
+    /// <summary>
+    /// Routine argument naming convention for <c>function</c>/<c>procedure</c> sources: a param or field
+    /// called <c>name</c> is passed as the named argument <c>p_name</c>, unless it already starts with
+    /// <c>p_</c> (case-insensitive). Route <c>{id}</c> → <c>p_id</c>; field <c>p_name</c> → <c>p_name</c>;
+    /// field <c>patient_id</c> → <c>p_patient_id</c>.
+    /// </summary>
+    public static string ToRoutineArgumentName(string name)
     {
-        var result = new Dictionary<string, object?>(bodyParams ?? new Dictionary<string, object?>());
+        return name.StartsWith("p_", StringComparison.OrdinalIgnoreCase) ? name : $"p_{name}";
+    }
 
-        if (routeParams is Dictionary<string, object?> routeDict)
+    /// <summary>
+    /// Builds the named arguments of a routine call from the route params and the request body.
+    /// When the endpoint declares <c>fields</c>, only declared fields are passed (other body keys are ignored);
+    /// otherwise every body key is passed. A route param wins over a body field with the same argument name.
+    /// Keys absent from the body are not passed, so the routine's DEFAULT applies.
+    /// </summary>
+    private static Dictionary<string, object?> BuildRoutineArguments(
+        EndpointConfig endpoint,
+        Dictionary<string, object?> routeParams,
+        Dictionary<string, object?>? body)
+    {
+        var arguments = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        if (body != null)
         {
-            foreach (var (key, value) in routeDict)
+            if (endpoint.Fields is { Count: > 0 })
             {
-                result[key] = value;
+                foreach (var field in endpoint.Fields)
+                {
+                    if (body.TryGetValue(field.Name, out var value))
+                    {
+                        arguments[ToRoutineArgumentName(field.Name)] = ConvertBodyValue(value, field.FieldType);
+                    }
+                }
+            }
+            else
+            {
+                foreach (var (key, value) in body)
+                {
+                    arguments[ToRoutineArgumentName(key)] = ConvertBodyValue(value, null);
+                }
             }
         }
 
-        return result;
+        foreach (var (key, value) in routeParams)
+        {
+            arguments[ToRoutineArgumentName(key)] = value;
+        }
+
+        return arguments;
+    }
+
+    private static string? FindInvalidArgumentName(Dictionary<string, object?> arguments)
+    {
+        return arguments.Keys.FirstOrDefault(name =>
+            !name.All(c => char.IsAsciiLetterOrDigit(c) || c == '_'));
+    }
+
+    /// <summary>
+    /// Converts a JSON body value (or a YAML <c>default</c>) to the CLR type of its field.
+    /// <c>uuid</c>, <c>int</c>, <c>long</c>, <c>decimal</c> and <c>bool</c> become typed values;
+    /// <c>string</c>, <c>date</c> and <c>datetime</c> stay text and <c>json</c> becomes its JSON text, which the
+    /// data layer sends untyped so the database coerces it to the argument's type.
+    /// Undeclared fields (<paramref name="type"/> null) keep their JSON type.
+    /// </summary>
+    private static object? ConvertBodyValue(object? value, FieldType? type)
+    {
+        if (value is JsonElement json)
+        {
+            if (json.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+                return null;
+
+            if (type == FieldType.Json || json.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
+                return json.GetRawText();
+
+            if (type == null)
+            {
+                return json.ValueKind switch
+                {
+                    JsonValueKind.String => json.GetString(),
+                    JsonValueKind.True => true,
+                    JsonValueKind.False => false,
+                    _ => json.TryGetInt64(out var l) ? l : json.GetDecimal()
+                };
+            }
+
+            value = json.ValueKind == JsonValueKind.String ? json.GetString() : json.GetRawText();
+        }
+
+        if (type == null || value is not string text)
+            return value;
+
+        return type switch
+        {
+            FieldType.Uuid => Guid.Parse(text),
+            FieldType.Int => int.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture),
+            FieldType.Long => long.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture),
+            FieldType.Decimal => decimal.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture),
+            FieldType.Bool => bool.Parse(text),
+            _ => text
+        };
     }
 }
 

@@ -100,6 +100,25 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Fields patient_id, doctor_id, appointment_date, notes arrive as p_<field> (routine argument convention)
+CREATE OR REPLACE FUNCTION sp_create_appointment(
+    p_patient_id UUID,
+    p_doctor_id UUID,
+    p_appointment_date TIMESTAMP,
+    p_notes TEXT DEFAULT NULL
+)
+RETURNS UUID AS $$
+DECLARE
+    new_id UUID;
+BEGIN
+    INSERT INTO appointments (patient_id, doctor_id, appointment_date, notes)
+    VALUES (p_patient_id, p_doctor_id, p_appointment_date, p_notes)
+    RETURNING id INTO new_id;
+
+    RETURN new_id;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Seed data
 INSERT INTO doctors (name, specialty, crm) VALUES
 ('Dra. Larissa Silva', 'Neuropediatria', 'CRM-CE 12345'),

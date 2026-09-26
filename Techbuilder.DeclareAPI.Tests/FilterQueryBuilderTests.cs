@@ -287,6 +287,59 @@ public class FilterQueryBuilderTests
     }
 
     [Fact]
+    public void AddFilter_InOperator_EmitsOneParameterPerPlaceholder()
+    {
+        // Arrange
+        var builder = new FilterQueryBuilder();
+        var filter = new FilterConfig { Field = "status", Operator = "in" };
+
+        // Act
+        builder.AddFilter(filter, "active, pending");
+        var (whereClause, parameters) = builder.Build();
+
+        // Assert
+        whereClause.Should().Contain("\"status\" IN (@p0_0, @p0_1)");
+        parameters.Should().HaveCount(2);
+        parameters["p0_0"].Should().Be("active");
+        parameters["p0_1"].Should().Be("pending");
+    }
+
+    [Fact]
+    public void AddFilter_BetweenOperator_EmitsMinAndMaxParameters()
+    {
+        // Arrange
+        var builder = new FilterQueryBuilder();
+        var filter = new FilterConfig { Field = "age", Operator = "between" };
+
+        // Act
+        builder.AddFilter(filter, "18, 65");
+        var (_, parameters) = builder.Build();
+
+        // Assert
+        parameters.Should().HaveCount(2);
+        parameters["p0_min"].Should().Be("18");
+        parameters["p0_max"].Should().Be("65");
+    }
+
+    [Fact]
+    public void AddFilter_InAndBetweenMixedWithEquals_KeepsParameterNamesAligned()
+    {
+        // Arrange
+        var builder = new FilterQueryBuilder();
+
+        // Act
+        builder.AddFilter(new FilterConfig { Field = "status", Operator = "in" }, "a,b");
+        builder.AddFilter(new FilterConfig { Field = "age", Operator = "between" }, "1,2");
+        builder.AddFilter(new FilterConfig { Field = "name", Operator = "equals" }, "x");
+        var (whereClause, parameters) = builder.Build();
+
+        // Assert: every @placeholder in the SQL has a parameter, and nothing else
+        var placeholders = System.Text.RegularExpressions.Regex.Matches(whereClause, @"@(\w+)")
+            .Select(m => m.Groups[1].Value);
+        parameters.Keys.Should().BeEquivalentTo(placeholders);
+    }
+
+    [Fact]
     public void Build_NoConditions_ReturnsEmpty()
     {
         // Arrange

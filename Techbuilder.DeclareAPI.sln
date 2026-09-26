@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Techbuilder.DeclareAPI.Test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Techbuilder.DeclareAPI.Sample", "Techbuilder.DeclareAPI.Sample\Techbuilder.DeclareAPI.Sample.csproj", "{FA07067A-08B2-4377-9E4B-FAE1E0D9AAB8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Techbuilder.DeclareAPI.IntegrationTests", "Techbuilder.DeclareAPI.IntegrationTests\Techbuilder.DeclareAPI.IntegrationTests.csproj", "{9CC9A8EB-EA89-463B-85F2-1E8CAEA17ABB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -83,6 +85,18 @@ Global
 		{FA07067A-08B2-4377-9E4B-FAE1E0D9AAB8}.Release|x64.Build.0 = Release|Any CPU
 		{FA07067A-08B2-4377-9E4B-FAE1E0D9AAB8}.Release|x86.ActiveCfg = Release|Any CPU
 		{FA07067A-08B2-4377-9E4B-FAE1E0D9AAB8}.Release|x86.Build.0 = Release|Any CPU
+		{9CC9A8EB-EA89-463B-85F2-1E8CAEA17ABB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9CC9A8EB-EA89-463B-85F2-1E8CAEA17ABB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9CC9A8EB-EA89-463B-85F2-1E8CAEA17ABB}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{9CC9A8EB-EA89-463B-85F2-1E8CAEA17ABB}.Debug|x64.Build.0 = Debug|Any CPU
+		{9CC9A8EB-EA89-463B-85F2-1E8CAEA17ABB}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{9CC9A8EB-EA89-463B-85F2-1E8CAEA17ABB}.Debug|x86.Build.0 = Debug|Any CPU
+		{9CC9A8EB-EA89-463B-85F2-1E8CAEA17ABB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9CC9A8EB-EA89-463B-85F2-1E8CAEA17ABB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9CC9A8EB-EA89-463B-85F2-1E8CAEA17ABB}.Release|x64.ActiveCfg = Release|Any CPU
+		{9CC9A8EB-EA89-463B-85F2-1E8CAEA17ABB}.Release|x64.Build.0 = Release|Any CPU
+		{9CC9A8EB-EA89-463B-85F2-1E8CAEA17ABB}.Release|x86.ActiveCfg = Release|Any CPU
+		{9CC9A8EB-EA89-463B-85F2-1E8CAEA17ABB}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -2,13 +2,11 @@ using Techbuilder.DeclareAPI.Core.Configuration;
 
 namespace Techbuilder.DeclareAPI.Core.Query;
 
-/// <summary>
-/// Builds SQL WHERE clauses from filter configurations.
-/// </summary>
 public class FilterQueryBuilder
 {
     private readonly DatabaseDialect _dialect;
-    private readonly List<(string Sql, string ParamName, object? Value)> _conditions = new();
+    private readonly List<string> _conditions = new();
+    private readonly Dictionary<string, object?> _parameters = new();
     private int _paramIndex;
 
     public FilterQueryBuilder(DatabaseDialect dialect = DatabaseDialect.PostgreSQL)
@@ -18,6 +16,8 @@ public class FilterQueryBuilder
 
     /// <summary>
     /// Adds a filter condition based on the filter configuration and provided value.
+    /// Every <c>@placeholder</c> written into the SQL gets its own entry in the parameters
+    /// returned by <see cref="Build"/> (<c>in</c> uses <c>@pN_0..@pN_k</c>, <c>between</c> uses <c>@pN_min/@pN_max</c>).
     /// </summary>
     public FilterQueryBuilder AddFilter(FilterConfig filter, object? value)
     {
@@ -26,22 +26,27 @@ public class FilterQueryBuilder
         var paramName = $"p{_paramIndex++}";
         var quotedField = QuoteIdentifier(filter.Field);
 
-        var (sql, actualValue) = filter.FilterOperator switch
+        var (sql, parameters) = filter.FilterOperator switch
         {
-            FilterOperator.Equals => ($"{quotedField} = @{paramName}", value),
-            FilterOperator.Contains => ($"{quotedField} ILIKE @{paramName}", $"%{value}%"),
-            FilterOperator.StartsWith => ($"{quotedField} ILIKE @{paramName}", $"{value}%"),
-            FilterOperator.EndsWith => ($"{quotedField} ILIKE @{paramName}", $"%{value}"),
-            FilterOperator.GreaterThan => ($"{quotedField} > @{paramName}", value),
-            FilterOperator.GreaterThanOrEqual => ($"{quotedField} >= @{paramName}", value),
-            FilterOperator.LessThan => ($"{quotedField} < @{paramName}", value),
-            FilterOperator.LessThanOrEqual => ($"{quotedField} <= @{paramName}", value),
+            FilterOperator.Equals => Single($"{quotedField} = @{paramName}", paramName, value),
+            FilterOperator.Contains => Single($"{quotedField} ILIKE @{paramName}", paramName, $"%{value}%"),
+            FilterOperator.StartsWith => Single($"{quotedField} ILIKE @{paramName}", paramName, $"{value}%"),
+            FilterOperator.EndsWith => Single($"{quotedField} ILIKE @{paramName}", paramName, $"%{value}"),
+            FilterOperator.GreaterThan => Single($"{quotedField} > @{paramName}", paramName, value),
+            FilterOperator.GreaterThanOrEqual => Single($"{quotedField} >= @{paramName}", paramName, value),
+            FilterOperator.LessThan => Single($"{quotedField} < @{paramName}", paramName, value),
+            FilterOperator.LessThanOrEqual => Single($"{quotedField} <= @{paramName}", paramName, value),
             FilterOperator.In => BuildInCondition(quotedField, paramName, value),
             FilterOperator.Between => BuildBetweenCondition(quotedField, paramName, value),
-            _ => ($"{quotedField} = @{paramName}", value)
+            _ => Single($"{quotedField} = @{paramName}", paramName, value)
         };
 
-        _conditions.Add((sql, paramName, actualValue));
+        _conditions.Add(sql);
+        foreach (var (name, paramValue) in parameters)
+        {
+            _parameters[name] = paramValue;
+        }
+
         return this;
     }
 
@@ -54,7 +59,8 @@ public class FilterQueryBuilder
 
         var paramName = $"p{_paramIndex++}";
         var quotedField = QuoteIdentifier(field);
-        _conditions.Add(($"{quotedField} = @{paramName}", paramName, value));
+        _conditions.Add($"{quotedField} = @{paramName}");
+        _parameters[paramName] = value;
         return this;
     }
 
@@ -66,10 +72,8 @@ public class FilterQueryBuilder
         if (_conditions.Count == 0)
             return ("", new Dictionary<string, object?>());
 
-        var whereClause = " WHERE " + string.Join(" AND ", _conditions.Select(c => c.Sql));
-        var parameters = _conditions.ToDictionary(c => c.ParamName, c => c.Value);
-
-        return (whereClause, parameters);
+        var whereClause = " WHERE " + string.Join(" AND ", _conditions);
+        return (whereClause, new Dictionary<string, object?>(_parameters));
     }
 
     /// <summary>
@@ -96,31 +100,44 @@ public class FilterQueryBuilder
         return builder.Build();
     }
 
-    private (string Sql, object Value) BuildInCondition(string quotedField, string paramName, object value)
+    private static (string Sql, IEnumerable<KeyValuePair<string, object?>> Parameters) Single(
+        string sql, string paramName, object? value)
+    {
+        return (sql, new[] { new KeyValuePair<string, object?>(paramName, value) });
+    }
+
+    private static (string Sql, IEnumerable<KeyValuePair<string, object?>> Parameters) BuildInCondition(
+        string quotedField, string paramName, object value)
     {
         // Value should be a comma-separated string or collection
         var values = ParseInValues(value);
 
         if (values.Count == 0)
-            return ($"1=1", value); // Always true if no values
+            return ("1=1", Array.Empty<KeyValuePair<string, object?>>()); // Always true if no values
 
-        var placeholders = values.Select((_, i) => $"@{paramName}_{i}").ToList();
-        var sql = $"{quotedField} IN ({string.Join(", ", placeholders)})";
+        var parameters = values
+            .Select((v, i) => new KeyValuePair<string, object?>($"{paramName}_{i}", v))
+            .ToList();
+        var sql = $"{quotedField} IN ({string.Join(", ", parameters.Select(p => $"@{p.Key}"))})";
 
-        // For IN clause, we'll store the values array and handle specially
-        return (sql, values);
+        return (sql, parameters);
     }
 
-    private (string Sql, object Value) BuildBetweenCondition(string quotedField, string paramName, object value)
+    private static (string Sql, IEnumerable<KeyValuePair<string, object?>> Parameters) BuildBetweenCondition(
+        string quotedField, string paramName, object value)
     {
         // Value should be "min,max" format
         var parts = value.ToString()?.Split(',', 2);
 
         if (parts?.Length != 2)
-            return ($"1=1", value); // Always true if invalid format
+            return ("1=1", Array.Empty<KeyValuePair<string, object?>>()); // Always true if invalid format
 
         var sql = $"{quotedField} BETWEEN @{paramName}_min AND @{paramName}_max";
-        return (sql, new BetweenValue(parts[0].Trim(), parts[1].Trim()));
+        return (sql, new[]
+        {
+            new KeyValuePair<string, object?>($"{paramName}_min", parts[0].Trim()),
+            new KeyValuePair<string, object?>($"{paramName}_max", parts[1].Trim())
+        });
     }
 
     private static List<object> ParseInValues(object value)
